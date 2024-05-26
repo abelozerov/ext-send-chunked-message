@@ -1,4 +1,9 @@
 /* global chrome */
+
+if (!chrome) {
+    throw new Error("ext-send-chunked-message package can be used in Chrome Extension context only");
+}
+
 const CHUNKED_MESSAGE_FLAG = 'CHUNKED_MESSAGE_FLAG'
 const MAX_CHUNK_SIZE = 32 * 1024 * 1024  || process.env.EXT_SEND_CHUNKED_MESSAGE_MAX_CHUNK_SIZE; // 32 MB
 
@@ -16,9 +21,8 @@ const sendMessageDefaultFn = function(message) {
  * Use inside listener added with addOnChunkedMessageListener, to send back chunked response.
  */
 const sendChunkedResponse = ({ sendMessageFn } = {}) => (
-    sendResponse,
     response,
-    sender
+    sendResponse,
 ) => {
     const requestId = self.crypto.randomUUID();
     // Sending an indication that file will be sent as chunked messages

@@ -49,7 +49,7 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
     sendChunkedResponse({
         sendMessageFn: message =>
             chrome.tabs.sendMessage(sender.tab.id, message)
-    })(sendResponse, largeResponse, sender);
+    })(largeResponse, sendResponse);
 
     return true; // async listener
 })
