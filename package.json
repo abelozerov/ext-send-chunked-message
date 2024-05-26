@@ -1,0 +1,31 @@
+{
+  "name": "ext-send-chunked-message",
+  "version": "1.0.0",
+  "description": "A library enabling the transmission of large messages via chrome.runtime in Chrome Extensions with Manifest V3",
+  "main": "ext-send-chunked-message.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abelozerov/ext-send-chunked-message.git"
+  },
+  "keywords": [
+    "chrome",
+    "extension",
+    "manifest",
+    "sendMessage",
+    "chrome.runtime",
+    "chrome.runtime.sendMessage",
+    "chunk",
+    "chunked",
+    "large",
+    "message"
+  ],
+  "author": "Alexey Belozerov <asbelozerov@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/abelozerov/ext-send-chunked-message/issues"
+  },
+  "homepage": "https://github.com/abelozerov/ext-send-chunked-message#readme"
+}
