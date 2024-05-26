@@ -1,8 +1,9 @@
-const { sendChunkedMessage, MAX_CHUNK_SIZE } = require("ext-send-chunked-message");
+import { sendChunkedMessage, MAX_CHUNK_SIZE } from "ext-send-chunked-message";
 
-const largeMessage = 'x'.repeat(MAX_CHUNK_SIZE * 2.5);
+const largeMessage = 'x'.repeat(MAX_CHUNK_SIZE * 4);
 
+console.log('sending large message. Length: ', largeMessage.length);
 sendChunkedMessage(largeMessage)
     .then(response => {
-        console.log('large response received. Lenght: ', response.length);
+        console.log('large response received. Length: ', response.length);
     })

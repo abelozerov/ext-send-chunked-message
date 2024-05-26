@@ -55,6 +55,14 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 })
 ```
 
-## Supported environment variables:
+## Supported environment variables
 
 `EXT_SEND_CHUNKED_MESSAGE_MAX_CHUNK_SIZE` - max chunk size in bytes. Default is 32 * 1024 * 1024 (32Mb)
+
+## Examples
+
+See [Example](./example/chrome-extension/README.md)
+
+## Author
+
+Alexey Belozerov <alex@welldonecode.com>

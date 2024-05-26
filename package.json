@@ -22,7 +22,7 @@
     "large",
     "message"
   ],
-  "author": "Alexey Belozerov <asbelozerov@gmail.com>",
+  "author": "Alexey Belozerov <alex@welldonecode.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/abelozerov/ext-send-chunked-message/issues"

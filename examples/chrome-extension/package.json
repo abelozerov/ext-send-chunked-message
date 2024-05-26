@@ -4,9 +4,13 @@
   "description": "",
   "main": "background.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "esbuild content.js --bundle --outfile=build/content.js && esbuild background.js --bundle --outfile=build/background.js && cp manifest.json build/manifest.json"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "esbuild": "0.21.4"
+  }
 }
