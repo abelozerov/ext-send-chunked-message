@@ -11,9 +11,7 @@ content.js:
 ```
 import { sendChunkedMessage } from 'ext-send-chunked-message'
 
-sendChunkedMessage({
-    // your large message, will be sent in chunks
-})
+sendChunkedMessage(largeMessage)
     .then(response => {
         // response received, can be either normal or large in size
         ...
@@ -28,9 +26,12 @@ import { addOnChunkedMessageListener } from 'ext-send-chunked-message'
 
 addOnChunkedMessageListener((message, sender, sendResponse) => {
     // "message" is a large message, received in chunks and restored
-    sendResponse({
-        // response of normal size
-    });
+
+    const normalResponse = ...;
+
+    sendResponse(normalResponse);
+
+    // return true for async listener
 })
 ```
 
@@ -38,14 +39,13 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 
 background.js:
 ```
-import { sendChunkedMessage, sendChunkedResponse } from 'ext-send-chunked-message'
+import { addOnChunkedMessageListener, sendChunkedResponse } from 'ext-send-chunked-message'
 
 addOnChunkedMessageListener((message, sender, sendResponse) => {
     // "message" is a large message, received in chunks and restored
 
-    const largeResponse = {
-        // large response, will be sent in chunks
-    };
+    const largeResponse = ...;
+
     sendChunkedResponse({
         sendMessageFn: message =>
             chrome.tabs.sendMessage(sender.tab.id, message)
@@ -55,6 +55,6 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 })
 ```
 
-## Suported environment variables:
+## Supported environment variables:
 
 `EXT_SEND_CHUNKED_MESSAGE_MAX_CHUNK_SIZE` - max chunk size in bytes. Default is 32 * 1024 * 1024 (32Mb)
