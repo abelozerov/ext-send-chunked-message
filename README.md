@@ -61,7 +61,7 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 
 ## Examples
 
-See [Example](./example/chrome-extension/README.md)
+See [Example README](./examples/chrome-extension/README.md)
 
 ## Author
 
