@@ -1,0 +1,16 @@
+{
+    "background":{
+        "service_worker": "background.js"
+    },
+    "action":{
+        "default_title": "Example ext-send-chunked-message"
+    },
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'"
+    },
+    "name":"Example ext-send-chunked-message",
+    "manifest_version":3,
+    "permissions":[ "activeTab", "scripting"],
+    "host_permissions": [ "\u003Call_urls\u003E" ],
+    "version":"0.0.0.1"
+}
