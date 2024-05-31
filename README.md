@@ -4,6 +4,10 @@ A library enabling the transmission of large messages via chrome.runtime in Chro
 
 Standard `chrome.runtime.sendMessage` has a message size limit ~32Mb. When you exceed the limit you will receive an error "Uncaught Error: Message length exceeded maximum allowed length". This library resolves the problem and allows you to send messages without a limit.
 
+## Installation
+
+`npm i ext-send-chunked-message`
+
 ## Usage - send large message from content script to backround:
 
 content.js:
