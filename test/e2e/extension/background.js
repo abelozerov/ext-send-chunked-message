@@ -30,7 +30,10 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
     const responsePayload = {
         data: 'y'.repeat(CUSTOM_CHUNK_SIZE * 3),
         requestChunkCount,
-        requestMessageLength: typeof message === 'string' ? message.length : JSON.stringify(message).length
+        requestMessageLength:
+            typeof message === 'string'
+                ? message.length
+                : JSON.stringify(message).length
     };
 
     sendChunkedResponse({
