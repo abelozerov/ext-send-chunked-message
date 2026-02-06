@@ -1,5 +1,8 @@
 node_modules/
 examples/
+src/
 build/
+test/
 package-lock.json
 .github
+tsconfig.json

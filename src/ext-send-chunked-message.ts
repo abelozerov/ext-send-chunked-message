@@ -1,15 +1,53 @@
-/* global chrome */
-
-if (!chrome) {
+if (typeof chrome === 'undefined') {
     throw new Error("ext-send-chunked-message package can be used in Chrome Extension context only");
 }
 
-const CHUNKED_MESSAGE_FLAG = 'CHUNKED_MESSAGE_FLAG'
-const MAX_CHUNK_SIZE = 32 * 1024 * 1024  || process.env.EXT_SEND_CHUNKED_MESSAGE_MAX_CHUNK_SIZE; // 32 MB
+export const CHUNKED_MESSAGE_FLAG = 'CHUNKED_MESSAGE_FLAG' as const;
+export const MAX_CHUNK_SIZE: number = 32 * 1024 * 1024; // 32 MB
 
-const requestsStorage = {};
+export interface ChunkedMessage {
+    [CHUNKED_MESSAGE_FLAG]: boolean;
+    requestId: string;
+    chunk?: string;
+    done?: boolean;
+}
 
-const sendMessageDefaultFn = function(message) {
+export type SendMessageFn = (
+    message: ChunkedMessage
+) => Promise<ChunkedMessage | null>;
+
+export interface SendChunkedMessageOptions {
+    sendMessageFn?: SendMessageFn;
+    requestId?: string;
+    generateRequestId?: () => string;
+}
+
+export interface SendChunkedResponseOptions {
+    sendMessageFn?: SendMessageFn;
+    generateRequestId?: () => string;
+}
+
+export interface AddOnChunkedMessageListenerOptions {
+    requestIdToMonitor?: string;
+}
+
+export type OnChunkedMessageHandler = (
+    message: unknown,
+    sender: chrome.runtime.MessageSender,
+    sendResponse: (response?: unknown) => void,
+) => boolean | void;
+
+export type ChunkedMessageListener = (
+    request: ChunkedMessage,
+    sender: chrome.runtime.MessageSender,
+    sendResponse: (response?: unknown) => void,
+) => boolean;
+
+const requestsStorage: Record<string, string[]> = {};
+
+const defaultGenerateRequestId = (): string => self.crypto.randomUUID();
+
+const sendMessageDefaultFn: SendMessageFn = function(message) {
     return new Promise(resolve =>
         chrome.runtime.sendMessage(message, response => {
             resolve(response);
@@ -20,11 +58,13 @@ const sendMessageDefaultFn = function(message) {
 /**
  * Use inside listener added with addOnChunkedMessageListener, to send back chunked response.
  */
-const sendChunkedResponse = ({ sendMessageFn } = {}) => (
-    response,
-    sendResponse,
-) => {
-    const requestId = self.crypto.randomUUID();
+export const sendChunkedResponse = (
+    { sendMessageFn, generateRequestId }: SendChunkedResponseOptions = {}
+) => (
+    response: unknown,
+    sendResponse: (response?: unknown) => void,
+): void => {
+    const requestId = (generateRequestId || defaultGenerateRequestId)();
     // Sending an indication that file will be sent as chunked messages
     sendResponse({
         [CHUNKED_MESSAGE_FLAG]: true,
@@ -42,13 +82,13 @@ const sendChunkedResponse = ({ sendMessageFn } = {}) => (
  * Use to send chunked message.
  * Receiver should register listener with addOnChunkedMessageListener
  */
-const sendChunkedMessage = async (
-    message,
-    { sendMessageFn, requestId: requestIdOverriden } = {}
-) => {
+export const sendChunkedMessage = async (
+    message: unknown,
+    { sendMessageFn, requestId: requestIdOverridden, generateRequestId }: SendChunkedMessageOptions = {}
+): Promise<unknown> => {
     const sendMessage = sendMessageFn || sendMessageDefaultFn;
     // Generating requestId for the message
-    const requestId = requestIdOverriden || self.crypto.randomUUID();
+    const requestId = requestIdOverridden || (generateRequestId || defaultGenerateRequestId)();
     const messageSerialized = JSON.stringify(message);
     const len = messageSerialized.length;
     const step = MAX_CHUNK_SIZE;
@@ -56,7 +96,6 @@ const sendChunkedMessage = async (
     while (ii < len) {
         const nextIndex = Math.min(ii + step, len);
         const substr = messageSerialized.substring(ii, nextIndex);
-        // eslint-disable-next-line no-await-in-loop
         await sendMessage({
             [CHUNKED_MESSAGE_FLAG]: true,
             requestId,
@@ -73,12 +112,12 @@ const sendChunkedMessage = async (
 
     // If response indicates there will be a chunk message sent, adding a listener to retrieve full response
     if (response && response[CHUNKED_MESSAGE_FLAG]) {
-        let listener;
+        let listener: ChunkedMessageListener | undefined;
         try {
             const fullResponse = await new Promise(resolve => {
                 listener = addOnChunkedMessageListener(
-                    (fullResponseFromListener, _, sendResponse) => {
-                        sendResponse();
+                    (fullResponseFromListener, _, sendResp) => {
+                        sendResp();
                         resolve(fullResponseFromListener);
                     },
                     {
@@ -98,30 +137,32 @@ const sendChunkedMessage = async (
 };
 
 /**
- * Add listener to handle chunked messages sent with sendChunkedResponse
- * Listerer object is returned
+ * Add listener to handle chunked messages sent with sendChunkedResponse.
+ * Listener object is returned.
  */
-const addOnChunkedMessageListener = (handler, options) => {
+export const addOnChunkedMessageListener = (
+    handler: OnChunkedMessageHandler,
+    options?: AddOnChunkedMessageListenerOptions
+): ChunkedMessageListener => {
     const newListener = onChunkedMessageHandlerInternal(handler, options);
     chrome.runtime.onMessage.addListener(newListener);
     return newListener;
 };
 
 /**
- * Remove listerer handles chunked message. As argument object returned by addOnChunkedMessageListener
+ * Remove listener that handles chunked message. Pass the object returned by addOnChunkedMessageListener.
  */
-const removeOnChunkedMessageListener = listener => {
+export const removeOnChunkedMessageListener = (listener: ChunkedMessageListener): void => {
     chrome.runtime.onMessage.removeListener(listener);
 };
 
 const onChunkedMessageHandlerInternal = (
-    handler,
-    { requestIdToMonitor } = {}
-) => (
+    handler: OnChunkedMessageHandler,
+    { requestIdToMonitor }: AddOnChunkedMessageListenerOptions = {}
+): ChunkedMessageListener => (
     request,
     sender,
     sendResponse
-    // eslint-disable-next-line consistent-return
 ) => {
     if (request && request[CHUNKED_MESSAGE_FLAG] && request.requestId) {
         const requestId = request.requestId;
@@ -132,34 +173,25 @@ const onChunkedMessageHandlerInternal = (
         }
 
         if (request.done) {
-            // eslint-disable-next-line prefer-spread
-            const fullMessageSearialized = ''.concat.apply(
+            const fullMessageSerialized = ''.concat.apply(
                 '',
                 requestsStorage[requestId]
             );
             delete requestsStorage[requestId];
-            const fullMessage = JSON.parse(fullMessageSearialized);
+            const fullMessage = JSON.parse(fullMessageSerialized);
             // async sendResponse can be enabled inside handler
-            return handler(fullMessage, sender, sendResponse);
+            return handler(fullMessage, sender, sendResponse) ?? false;
         } else {
             if (!requestsStorage[requestId]) {
                 requestsStorage[requestId] = [];
             }
-            requestsStorage[requestId].push(request.chunk);
+            requestsStorage[requestId].push(request.chunk!);
             sendResponse({
                 status: 'PENDING'
             });
+            return true;
         }
     }
 
     return false;
 };
-
-module.exports = {
-    CHUNKED_MESSAGE_FLAG,
-    MAX_CHUNK_SIZE,
-    sendChunkedMessage,
-    sendChunkedResponse,
-    addOnChunkedMessageListener,
-    removeOnChunkedMessageListener
-}
