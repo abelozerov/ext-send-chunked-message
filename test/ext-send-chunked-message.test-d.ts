@@ -12,7 +12,7 @@ import {
     SendChunkedResponseOptions,
     AddOnChunkedMessageListenerOptions,
     OnChunkedMessageHandler,
-    ChunkedMessageListener,
+    ChunkedMessageListener
 } from '../dist/ext-send-chunked-message';
 
 // --- Constants ---
@@ -26,20 +26,29 @@ expectType<number>(MAX_CHUNK_SIZE);
 expectType<Promise<unknown>>(sendChunkedMessage({ data: 'test' }));
 
 // With all options
-expectType<Promise<unknown>>(sendChunkedMessage({ data: 'test' }, {
-    sendMessageFn: (msg) => Promise.resolve(null),
-    requestId: 'custom-id',
-}));
+expectType<Promise<unknown>>(
+    sendChunkedMessage(
+        { data: 'test' },
+        {
+            sendMessageFn: msg => Promise.resolve(null),
+            requestId: 'custom-id'
+        }
+    )
+);
 
 // With only sendMessageFn
-expectType<Promise<unknown>>(sendChunkedMessage('string message', {
-    sendMessageFn: (msg) => Promise.resolve(null),
-}));
+expectType<Promise<unknown>>(
+    sendChunkedMessage('string message', {
+        sendMessageFn: msg => Promise.resolve(null)
+    })
+);
 
 // With only requestId
-expectType<Promise<unknown>>(sendChunkedMessage([1, 2, 3], {
-    requestId: 'my-id',
-}));
+expectType<Promise<unknown>>(
+    sendChunkedMessage([1, 2, 3], {
+        requestId: 'my-id'
+    })
+);
 
 // Empty options is fine
 expectType<Promise<unknown>>(sendChunkedMessage({ data: 'test' }, {}));
@@ -49,19 +58,25 @@ expectError(sendChunkedMessage());
 
 // Wrong option types
 expectError(sendChunkedMessage({ data: 'test' }, { requestId: 123 }));
-expectError(sendChunkedMessage({ data: 'test' }, { sendMessageFn: 'not a function' }));
+expectError(
+    sendChunkedMessage({ data: 'test' }, { sendMessageFn: 'not a function' })
+);
 
 // --- sendChunkedResponse ---
 
 // No options
 const responderNoOpts = sendChunkedResponse();
-expectType<(response: unknown, sendResponse: (response?: unknown) => void) => void>(responderNoOpts);
+expectType<
+    (response: unknown, sendResponse: (response?: unknown) => void) => void
+>(responderNoOpts);
 
 // With sendMessageFn
 const responderWithFn = sendChunkedResponse({
-    sendMessageFn: (msg) => Promise.resolve(null),
+    sendMessageFn: msg => Promise.resolve(null)
 });
-expectType<(response: unknown, sendResponse: (response?: unknown) => void) => void>(responderWithFn);
+expectType<
+    (response: unknown, sendResponse: (response?: unknown) => void) => void
+>(responderWithFn);
 
 // Empty options
 sendChunkedResponse({});
@@ -82,7 +97,7 @@ expectType<ChunkedMessageListener>(listener);
 
 // With requestIdToMonitor
 const filteredListener = addOnChunkedMessageListener(handler, {
-    requestIdToMonitor: 'some-id',
+    requestIdToMonitor: 'some-id'
 });
 expectType<ChunkedMessageListener>(filteredListener);
 
@@ -108,37 +123,39 @@ expectError(removeOnChunkedMessageListener());
 
 const chunkedMsg: ChunkedMessage = {
     CHUNKED_MESSAGE_FLAG: true,
-    requestId: 'abc',
+    requestId: 'abc'
 };
 
 const chunkedMsgWithChunk: ChunkedMessage = {
     CHUNKED_MESSAGE_FLAG: true,
     requestId: 'abc',
-    chunk: '{"data":"test"}',
+    chunk: '{"data":"test"}'
 };
 
 const chunkedMsgDone: ChunkedMessage = {
     CHUNKED_MESSAGE_FLAG: true,
     requestId: 'abc',
-    done: true,
+    done: true
 };
 
 // --- SendMessageFn type ---
 
-const sendFn: SendMessageFn = (msg) => Promise.resolve(null);
-expectType<Promise<ChunkedMessage | null>>(sendFn({ CHUNKED_MESSAGE_FLAG: true, requestId: 'x' }));
+const sendFn: SendMessageFn = msg => Promise.resolve(null);
+expectType<Promise<ChunkedMessage | null>>(
+    sendFn({ CHUNKED_MESSAGE_FLAG: true, requestId: 'x' })
+);
 
 // --- Options interfaces ---
 
 const opts: SendChunkedMessageOptions = {
-    sendMessageFn: (msg) => Promise.resolve(null),
-    requestId: 'id',
+    sendMessageFn: msg => Promise.resolve(null),
+    requestId: 'id'
 };
 
 const respOpts: SendChunkedResponseOptions = {
-    sendMessageFn: (msg) => Promise.resolve(null),
+    sendMessageFn: msg => Promise.resolve(null)
 };
 
 const listenerOpts: AddOnChunkedMessageListenerOptions = {
-    requestIdToMonitor: 'req-123',
+    requestIdToMonitor: 'req-123'
 };

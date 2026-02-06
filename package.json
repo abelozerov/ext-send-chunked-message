@@ -1,53 +1,56 @@
 {
-  "name": "ext-send-chunked-message",
-  "engines": {
-    "node": "22"
-  },
-  "version": "1.0.0",
-  "description": "A library enabling the transmission of large messages via chrome.runtime in Chrome Extensions with Manifest V3",
-  "main": "dist/ext-send-chunked-message.js",
-  "types": "dist/ext-send-chunked-message.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "pretest": "npm run build",
-    "test": "jest",
-    "lint": "eslint",
-    "test:types": "tsd",
-    "prepublishOnly": "npm run build && npm run lint && npm test && npm run test:types"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/abelozerov/ext-send-chunked-message.git"
-  },
-  "keywords": [
-    "chrome",
-    "extension",
-    "manifest",
-    "sendMessage",
-    "chrome.runtime",
-    "chrome.runtime.sendMessage",
-    "chunk",
-    "chunked",
-    "large",
-    "message"
-  ],
-  "author": "Alexey Belozerov <alex@welldonecode.com>",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/abelozerov/ext-send-chunked-message/issues"
-  },
-  "homepage": "https://github.com/abelozerov/ext-send-chunked-message#readme",
-  "dependencies": {
-    "@types/chrome": "*"
-  },
-  "tsd": {
-    "directory": "test"
-  },
-  "devDependencies": {
-    "eslint": "^9.39.2",
-    "jest": "^30.2.0",
-    "tsd": "^0.33.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.54.0"
-  }
+    "name": "ext-send-chunked-message",
+    "engines": {
+        "node": "22"
+    },
+    "version": "1.0.0",
+    "description": "A library enabling the transmission of large messages via chrome.runtime in Chrome Extensions with Manifest V3",
+    "main": "dist/ext-send-chunked-message.js",
+    "types": "dist/ext-send-chunked-message.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "pretest": "npm run build",
+        "test": "jest",
+        "lint": "eslint && prettier --check .",
+        "format": "prettier --write .",
+        "test:types": "tsd",
+        "prepublishOnly": "npm run build && npm run lint && npm test && npm run test:types"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/abelozerov/ext-send-chunked-message.git"
+    },
+    "keywords": [
+        "chrome",
+        "extension",
+        "manifest",
+        "sendMessage",
+        "chrome.runtime",
+        "chrome.runtime.sendMessage",
+        "chunk",
+        "chunked",
+        "large",
+        "message"
+    ],
+    "author": "Alexey Belozerov <alex@welldonecode.com>",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/abelozerov/ext-send-chunked-message/issues"
+    },
+    "homepage": "https://github.com/abelozerov/ext-send-chunked-message#readme",
+    "dependencies": {
+        "@types/chrome": "*"
+    },
+    "tsd": {
+        "directory": "test"
+    },
+    "devDependencies": {
+        "eslint": "^9.39.2",
+        "eslint-config-prettier": "^10.1.8",
+        "jest": "^30.2.0",
+        "prettier": "^3.8.1",
+        "tsd": "^0.33.0",
+        "typescript": "^5.7.0",
+        "typescript-eslint": "^8.54.0"
+    }
 }

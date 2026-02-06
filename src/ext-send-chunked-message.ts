@@ -1,5 +1,7 @@
 if (typeof chrome === 'undefined') {
-    throw new Error("ext-send-chunked-message package can be used in Chrome Extension context only");
+    throw new Error(
+        'ext-send-chunked-message package can be used in Chrome Extension context only'
+    );
 }
 
 export const CHUNKED_MESSAGE_FLAG = 'CHUNKED_MESSAGE_FLAG' as const;
@@ -34,20 +36,20 @@ export interface AddOnChunkedMessageListenerOptions {
 export type OnChunkedMessageHandler = (
     message: unknown,
     sender: chrome.runtime.MessageSender,
-    sendResponse: (response?: unknown) => void,
+    sendResponse: (response?: unknown) => void
 ) => boolean | void;
 
 export type ChunkedMessageListener = (
     request: ChunkedMessage,
     sender: chrome.runtime.MessageSender,
-    sendResponse: (response?: unknown) => void,
+    sendResponse: (response?: unknown) => void
 ) => boolean;
 
 const requestsStorage: Record<string, string[]> = {};
 
 const defaultGenerateRequestId = (): string => self.crypto.randomUUID();
 
-const sendMessageDefaultFn: SendMessageFn = function(message) {
+const sendMessageDefaultFn: SendMessageFn = function (message) {
     return new Promise(resolve =>
         chrome.runtime.sendMessage(message, response => {
             resolve(response);
@@ -58,25 +60,22 @@ const sendMessageDefaultFn: SendMessageFn = function(message) {
 /**
  * Use inside listener added with addOnChunkedMessageListener, to send back chunked response.
  */
-export const sendChunkedResponse = (
-    { sendMessageFn, generateRequestId }: SendChunkedResponseOptions = {}
-) => (
-    response: unknown,
-    sendResponse: (response?: unknown) => void,
-): void => {
-    const requestId = (generateRequestId || defaultGenerateRequestId)();
-    // Sending an indication that file will be sent as chunked messages
-    sendResponse({
-        [CHUNKED_MESSAGE_FLAG]: true,
-        requestId
-    });
-    // At this point content script has added a listener with addOnMessageWithChunksListener
-    // Sending file contents as chunked messages
-    sendChunkedMessage(response, {
-        sendMessageFn: sendMessageFn || sendMessageDefaultFn,
-        requestId
-    });
-};
+export const sendChunkedResponse =
+    ({ sendMessageFn, generateRequestId }: SendChunkedResponseOptions = {}) =>
+    (response: unknown, sendResponse: (response?: unknown) => void): void => {
+        const requestId = (generateRequestId || defaultGenerateRequestId)();
+        // Sending an indication that file will be sent as chunked messages
+        sendResponse({
+            [CHUNKED_MESSAGE_FLAG]: true,
+            requestId
+        });
+        // At this point content script has added a listener with addOnMessageWithChunksListener
+        // Sending file contents as chunked messages
+        sendChunkedMessage(response, {
+            sendMessageFn: sendMessageFn || sendMessageDefaultFn,
+            requestId
+        });
+    };
 
 /**
  * Use to send chunked message.
@@ -84,11 +83,17 @@ export const sendChunkedResponse = (
  */
 export const sendChunkedMessage = async (
     message: unknown,
-    { sendMessageFn, requestId: requestIdOverridden, generateRequestId }: SendChunkedMessageOptions = {}
+    {
+        sendMessageFn,
+        requestId: requestIdOverridden,
+        generateRequestId
+    }: SendChunkedMessageOptions = {}
 ): Promise<unknown> => {
     const sendMessage = sendMessageFn || sendMessageDefaultFn;
     // Generating requestId for the message
-    const requestId = requestIdOverridden || (generateRequestId || defaultGenerateRequestId)();
+    const requestId =
+        requestIdOverridden ||
+        (generateRequestId || defaultGenerateRequestId)();
     const messageSerialized = JSON.stringify(message);
     // Build chunks first, then send sequentially (order matters for reassembly)
     const chunks: string[] = [];
@@ -96,11 +101,14 @@ export const sendChunkedMessage = async (
         chunks.push(messageSerialized.substring(ii, ii + MAX_CHUNK_SIZE));
     }
     await chunks.reduce<Promise<unknown>>(
-        (chain, chunk) => chain.then(() => sendMessage({
-            [CHUNKED_MESSAGE_FLAG]: true,
-            requestId,
-            chunk
-        })),
+        (chain, chunk) =>
+            chain.then(() =>
+                sendMessage({
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId,
+                    chunk
+                })
+            ),
         Promise.resolve(null)
     );
     // At least 2 messages will be sent. Last one - with done: true
@@ -152,43 +160,45 @@ export const addOnChunkedMessageListener = (
 /**
  * Remove listener that handles chunked message. Pass the object returned by addOnChunkedMessageListener.
  */
-export const removeOnChunkedMessageListener = (listener: ChunkedMessageListener): void => {
+export const removeOnChunkedMessageListener = (
+    listener: ChunkedMessageListener
+): void => {
     chrome.runtime.onMessage.removeListener(listener);
 };
 
-const onChunkedMessageHandlerInternal = (
-    handler: OnChunkedMessageHandler,
-    { requestIdToMonitor }: AddOnChunkedMessageListenerOptions = {}
-): ChunkedMessageListener => (
-    request,
-    sender,
-    sendResponse
-) => {
-    if (request && request[CHUNKED_MESSAGE_FLAG] && request.requestId) {
-        const requestId = request.requestId;
+const onChunkedMessageHandlerInternal =
+    (
+        handler: OnChunkedMessageHandler,
+        { requestIdToMonitor }: AddOnChunkedMessageListenerOptions = {}
+    ): ChunkedMessageListener =>
+    (request, sender, sendResponse) => {
+        if (request && request[CHUNKED_MESSAGE_FLAG] && request.requestId) {
+            const requestId = request.requestId;
 
-        // Optional param to monitor only certain requestId
-        if (requestIdToMonitor && requestId !== requestIdToMonitor) {
-            return false;
-        }
-
-        if (request.done) {
-            const fullMessageSerialized = ''.concat(...requestsStorage[requestId]);
-            delete requestsStorage[requestId];
-            const fullMessage = JSON.parse(fullMessageSerialized);
-            // async sendResponse can be enabled inside handler
-            return handler(fullMessage, sender, sendResponse) ?? false;
-        } else {
-            if (!requestsStorage[requestId]) {
-                requestsStorage[requestId] = [];
+            // Optional param to monitor only certain requestId
+            if (requestIdToMonitor && requestId !== requestIdToMonitor) {
+                return false;
             }
-            requestsStorage[requestId].push(request.chunk!);
-            sendResponse({
-                status: 'PENDING'
-            });
-            return true;
-        }
-    }
 
-    return false;
-};
+            if (request.done) {
+                const fullMessageSerialized = ''.concat(
+                    ...requestsStorage[requestId]
+                );
+                delete requestsStorage[requestId];
+                const fullMessage = JSON.parse(fullMessageSerialized);
+                // async sendResponse can be enabled inside handler
+                return handler(fullMessage, sender, sendResponse) ?? false;
+            } else {
+                if (!requestsStorage[requestId]) {
+                    requestsStorage[requestId] = [];
+                }
+                requestsStorage[requestId].push(request.chunk!);
+                sendResponse({
+                    status: 'PENDING'
+                });
+                return true;
+            }
+        }
+
+        return false;
+    };

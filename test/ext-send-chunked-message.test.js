@@ -112,10 +112,13 @@ describe('ext-send-chunked-message', () => {
         test('uses provided requestId override', async () => {
             const sendMessageFn = jest.fn().mockResolvedValue(undefined);
 
-            await sendChunkedMessage({ test: true }, {
-                sendMessageFn,
-                requestId: 'custom-id'
-            });
+            await sendChunkedMessage(
+                { test: true },
+                {
+                    sendMessageFn,
+                    requestId: 'custom-id'
+                }
+            );
 
             expect(sendMessageFn.mock.calls[0][0].requestId).toBe('custom-id');
             expect(sendMessageFn.mock.calls[1][0].requestId).toBe('custom-id');
@@ -125,35 +128,49 @@ describe('ext-send-chunked-message', () => {
             const sendMessageFn = jest.fn().mockResolvedValue(undefined);
             const generateRequestId = jest.fn().mockReturnValue('generated-id');
 
-            await sendChunkedMessage({ test: true }, {
-                sendMessageFn,
-                generateRequestId
-            });
+            await sendChunkedMessage(
+                { test: true },
+                {
+                    sendMessageFn,
+                    generateRequestId
+                }
+            );
 
             expect(generateRequestId).toHaveBeenCalledTimes(1);
-            expect(sendMessageFn.mock.calls[0][0].requestId).toBe('generated-id');
+            expect(sendMessageFn.mock.calls[0][0].requestId).toBe(
+                'generated-id'
+            );
         });
 
         test('requestId override takes precedence over generateRequestId', async () => {
             const sendMessageFn = jest.fn().mockResolvedValue(undefined);
             const generateRequestId = jest.fn().mockReturnValue('generated-id');
 
-            await sendChunkedMessage({ test: true }, {
-                sendMessageFn,
-                requestId: 'explicit-id',
-                generateRequestId
-            });
+            await sendChunkedMessage(
+                { test: true },
+                {
+                    sendMessageFn,
+                    requestId: 'explicit-id',
+                    generateRequestId
+                }
+            );
 
             expect(generateRequestId).not.toHaveBeenCalled();
-            expect(sendMessageFn.mock.calls[0][0].requestId).toBe('explicit-id');
+            expect(sendMessageFn.mock.calls[0][0].requestId).toBe(
+                'explicit-id'
+            );
         });
 
         test('returns non-chunked response directly', async () => {
-            const sendMessageFn = jest.fn()
-                .mockResolvedValueOnce(undefined)       // chunk
+            const sendMessageFn = jest
+                .fn()
+                .mockResolvedValueOnce(undefined) // chunk
                 .mockResolvedValueOnce({ result: 'ok' }); // done
 
-            const result = await sendChunkedMessage({ data: 'test' }, { sendMessageFn });
+            const result = await sendChunkedMessage(
+                { data: 'test' },
+                { sendMessageFn }
+            );
 
             expect(result).toEqual({ result: 'ok' });
         });
@@ -161,7 +178,10 @@ describe('ext-send-chunked-message', () => {
         test('returns undefined when response is empty', async () => {
             const sendMessageFn = jest.fn().mockResolvedValue(undefined);
 
-            const result = await sendChunkedMessage({ data: 'test' }, { sendMessageFn });
+            const result = await sendChunkedMessage(
+                { data: 'test' },
+                { sendMessageFn }
+            );
 
             expect(result).toBeUndefined();
         });
@@ -175,22 +195,28 @@ describe('ext-send-chunked-message', () => {
         });
 
         test('handles chunked response from receiver', async () => {
-            const sendMessageFn = jest.fn()
+            const sendMessageFn = jest
+                .fn()
                 .mockResolvedValueOnce(undefined) // chunk
-                .mockResolvedValueOnce({          // done - indicates chunked response coming
+                .mockResolvedValueOnce({
+                    // done - indicates chunked response coming
                     [CHUNKED_MESSAGE_FLAG]: true,
                     requestId: 'response-req-id'
                 });
 
-            const resultPromise = sendChunkedMessage({ data: 'test' }, { sendMessageFn });
+            const resultPromise = sendChunkedMessage(
+                { data: 'test' },
+                { sendMessageFn }
+            );
 
             // Wait for async operations to set up the listener
             await new Promise(resolve => setTimeout(resolve, 10));
 
             // Get the listener that was registered for the chunked response
-            const registeredListener = mockAddListener.mock.calls[
-                mockAddListener.mock.calls.length - 1
-            ][0];
+            const registeredListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
 
             // Simulate receiving chunked response
             registeredListener(
@@ -218,20 +244,25 @@ describe('ext-send-chunked-message', () => {
         });
 
         test('cleans up listener after receiving chunked response', async () => {
-            const sendMessageFn = jest.fn()
+            const sendMessageFn = jest
+                .fn()
                 .mockResolvedValueOnce(undefined)
                 .mockResolvedValueOnce({
                     [CHUNKED_MESSAGE_FLAG]: true,
                     requestId: 'response-cleanup'
                 });
 
-            const resultPromise = sendChunkedMessage({ data: 'test' }, { sendMessageFn });
+            const resultPromise = sendChunkedMessage(
+                { data: 'test' },
+                { sendMessageFn }
+            );
 
             await new Promise(resolve => setTimeout(resolve, 10));
 
-            const registeredListener = mockAddListener.mock.calls[
-                mockAddListener.mock.calls.length - 1
-            ][0];
+            const registeredListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
 
             registeredListener(
                 {
@@ -314,7 +345,10 @@ describe('ext-send-chunked-message', () => {
             const generateRequestId = jest.fn().mockReturnValue('custom-uuid');
             const sendResponse = jest.fn();
 
-            const chunkedResponder = sendChunkedResponse({ sendMessageFn, generateRequestId });
+            const chunkedResponder = sendChunkedResponse({
+                sendMessageFn,
+                generateRequestId
+            });
             chunkedResponder({ data: 'test' }, sendResponse);
 
             expect(generateRequestId).toHaveBeenCalledTimes(1);
@@ -364,13 +398,18 @@ describe('ext-send-chunked-message', () => {
             handler = jest.fn();
             sendResponse = jest.fn();
             addOnChunkedMessageListener(handler);
-            internalListener = mockAddListener.mock.calls[
-                mockAddListener.mock.calls.length - 1
-            ][0];
+            internalListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
         });
 
         test('returns false for non-chunked messages', () => {
-            const result = internalListener({ type: 'NORMAL_MSG' }, {}, sendResponse);
+            const result = internalListener(
+                { type: 'NORMAL_MSG' },
+                {},
+                sendResponse
+            );
 
             expect(result).toBe(false);
             expect(handler).not.toHaveBeenCalled();
@@ -450,23 +489,47 @@ describe('ext-send-chunked-message', () => {
             const part3 = serialized.substring(20);
 
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-3', chunk: part1 },
-                sender, jest.fn()
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-3',
+                    chunk: part1
+                },
+                sender,
+                jest.fn()
             );
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-3', chunk: part2 },
-                sender, jest.fn()
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-3',
+                    chunk: part2
+                },
+                sender,
+                jest.fn()
             );
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-3', chunk: part3 },
-                sender, jest.fn()
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-3',
+                    chunk: part3
+                },
+                sender,
+                jest.fn()
             );
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-3', done: true },
-                sender, sendResponse
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-3',
+                    done: true
+                },
+                sender,
+                sendResponse
             );
 
-            expect(handler).toHaveBeenCalledWith(fullMessage, sender, sendResponse);
+            expect(handler).toHaveBeenCalledWith(
+                fullMessage,
+                sender,
+                sendResponse
+            );
         });
 
         test('handles multiple concurrent requestIds independently', () => {
@@ -474,28 +537,56 @@ describe('ext-send-chunked-message', () => {
 
             // Interleave chunks from two different requests
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-a', chunk: JSON.stringify({ a: 1 }) },
-                sender, jest.fn()
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-a',
+                    chunk: JSON.stringify({ a: 1 })
+                },
+                sender,
+                jest.fn()
             );
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-b', chunk: JSON.stringify({ b: 2 }) },
-                sender, jest.fn()
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-b',
+                    chunk: JSON.stringify({ b: 2 })
+                },
+                sender,
+                jest.fn()
             );
 
             // Complete req-b first
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-b', done: true },
-                sender, sendResponse
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-b',
+                    done: true
+                },
+                sender,
+                sendResponse
             );
-            expect(handler).toHaveBeenCalledWith({ b: 2 }, sender, sendResponse);
+            expect(handler).toHaveBeenCalledWith(
+                { b: 2 },
+                sender,
+                sendResponse
+            );
 
             // Complete req-a
             const sendResponse2 = jest.fn();
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-a', done: true },
-                sender, sendResponse2
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-a',
+                    done: true
+                },
+                sender,
+                sendResponse2
             );
-            expect(handler).toHaveBeenCalledWith({ a: 1 }, sender, sendResponse2);
+            expect(handler).toHaveBeenCalledWith(
+                { a: 1 },
+                sender,
+                sendResponse2
+            );
         });
 
         test('filters by requestIdToMonitor when provided', () => {
@@ -503,9 +594,10 @@ describe('ext-send-chunked-message', () => {
             addOnChunkedMessageListener(filteredHandler, {
                 requestIdToMonitor: 'target-req'
             });
-            const filteredListener = mockAddListener.mock.calls[
-                mockAddListener.mock.calls.length - 1
-            ][0];
+            const filteredListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
 
             // Message with wrong requestId is ignored
             const result = filteredListener(
@@ -552,21 +644,36 @@ describe('ext-send-chunked-message', () => {
             const sender = {};
 
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-cleanup', chunk: JSON.stringify('data') },
-                sender, jest.fn()
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-cleanup',
+                    chunk: JSON.stringify('data')
+                },
+                sender,
+                jest.fn()
             );
 
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-cleanup', done: true },
-                sender, sendResponse
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-cleanup',
+                    done: true
+                },
+                sender,
+                sendResponse
             );
 
             // Sending done again with same requestId should throw
             // because requestsStorage['req-cleanup'] was deleted
             expect(() => {
                 internalListener(
-                    { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-cleanup', done: true },
-                    sender, jest.fn()
+                    {
+                        [CHUNKED_MESSAGE_FLAG]: true,
+                        requestId: 'req-cleanup',
+                        done: true
+                    },
+                    sender,
+                    jest.fn()
                 );
             }).toThrow();
         });
@@ -575,13 +682,23 @@ describe('ext-send-chunked-message', () => {
             handler.mockReturnValue(true);
 
             internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-ret', chunk: JSON.stringify('data') },
-                {}, jest.fn()
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-ret',
+                    chunk: JSON.stringify('data')
+                },
+                {},
+                jest.fn()
             );
 
             const result = internalListener(
-                { [CHUNKED_MESSAGE_FLAG]: true, requestId: 'req-ret', done: true },
-                {}, sendResponse
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-ret',
+                    done: true
+                },
+                {},
+                sendResponse
             );
 
             // handler returned true (for async sendResponse), so listener should return true

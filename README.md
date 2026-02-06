@@ -25,6 +25,7 @@ sendChunkedMessage(largeMessage)
 ## Usage - receive large message on background and send normal (unchunked) response
 
 background.js:
+
 ```
 import { addOnChunkedMessageListener } from 'ext-send-chunked-message'
 
@@ -42,6 +43,7 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 ## Usage - receive large message on background and send large response
 
 background.js:
+
 ```
 import { addOnChunkedMessageListener, sendChunkedResponse } from 'ext-send-chunked-message'
 

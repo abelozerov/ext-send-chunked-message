@@ -7,3 +7,5 @@ package-lock.json
 .github
 tsconfig.json
 eslint.config.mjs
+.prettierrc.js
+.prettierignore
