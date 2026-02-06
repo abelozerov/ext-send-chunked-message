@@ -84,6 +84,28 @@ sendChunkedResponse({
 })(largeResponse, sendResponse)
 ```
 
+## Custom chunk size
+
+By default, messages are split into 32 MB chunks. You can change this via the `maxChunkSize` option (in bytes):
+
+```
+import { sendChunkedMessage } from 'ext-send-chunked-message'
+
+sendChunkedMessage(largeMessage, {
+    maxChunkSize: 1024 * 1024 // 1 MB chunks
+})
+```
+
+The same option is available on `sendChunkedResponse`:
+
+```
+sendChunkedResponse({
+    maxChunkSize: 1024 * 1024, // 1 MB chunks
+    sendMessageFn: message =>
+        chrome.tabs.sendMessage(sender.tab.id, message)
+})(largeResponse, sendResponse)
+```
+
 ## Examples
 
 See [Example README](./examples/chrome-extension/README.md)
