@@ -31,7 +31,8 @@ expectType<Promise<unknown>>(
         { data: 'test' },
         {
             sendMessageFn: msg => Promise.resolve(null),
-            requestId: 'custom-id'
+            requestId: 'custom-id',
+            maxChunkSize: 1024
         }
     )
 );
@@ -70,9 +71,10 @@ expectType<
     (response: unknown, sendResponse: (response?: unknown) => void) => void
 >(responderNoOpts);
 
-// With sendMessageFn
+// With sendMessageFn and maxChunkSize
 const responderWithFn = sendChunkedResponse({
-    sendMessageFn: msg => Promise.resolve(null)
+    sendMessageFn: msg => Promise.resolve(null),
+    maxChunkSize: 1024
 });
 expectType<
     (response: unknown, sendResponse: (response?: unknown) => void) => void
@@ -149,11 +151,13 @@ expectType<Promise<ChunkedMessage | null>>(
 
 const opts: SendChunkedMessageOptions = {
     sendMessageFn: msg => Promise.resolve(null),
-    requestId: 'id'
+    requestId: 'id',
+    maxChunkSize: 2048
 };
 
 const respOpts: SendChunkedResponseOptions = {
-    sendMessageFn: msg => Promise.resolve(null)
+    sendMessageFn: msg => Promise.resolve(null),
+    maxChunkSize: 2048
 };
 
 const listenerOpts: AddOnChunkedMessageListenerOptions = {

@@ -24,11 +24,13 @@ export interface SendChunkedMessageOptions {
     sendMessageFn?: SendMessageFn;
     requestId?: string;
     generateRequestId?: () => string;
+    maxChunkSize?: number;
 }
 
 export interface SendChunkedResponseOptions {
     sendMessageFn?: SendMessageFn;
     generateRequestId?: () => string;
+    maxChunkSize?: number;
 }
 
 export interface AddOnChunkedMessageListenerOptions {
@@ -73,7 +75,11 @@ const sendMessageDefaultFn: SendMessageFn = function (message) {
  * Use inside listener added with addOnChunkedMessageListener, to send back chunked response.
  */
 export const sendChunkedResponse =
-    ({ sendMessageFn, generateRequestId }: SendChunkedResponseOptions = {}) =>
+    ({
+        sendMessageFn,
+        generateRequestId,
+        maxChunkSize
+    }: SendChunkedResponseOptions = {}) =>
     (response: unknown, sendResponse: (response?: unknown) => void): void => {
         const requestId = (generateRequestId || defaultGenerateRequestId)();
         // Sending an indication that file will be sent as chunked messages
@@ -85,7 +91,8 @@ export const sendChunkedResponse =
         // Sending file contents as chunked messages
         sendChunkedMessage(response, {
             sendMessageFn: sendMessageFn || sendMessageDefaultFn,
-            requestId
+            requestId,
+            maxChunkSize
         }).catch(() => {
             // Chunk sending failed — receiver will timeout waiting for remaining chunks
         });
@@ -100,7 +107,8 @@ export const sendChunkedMessage = async (
     {
         sendMessageFn,
         requestId: requestIdOverridden,
-        generateRequestId
+        generateRequestId,
+        maxChunkSize
     }: SendChunkedMessageOptions = {}
 ): Promise<unknown> => {
     const sendMessage = sendMessageFn || sendMessageDefaultFn;
@@ -109,10 +117,11 @@ export const sendChunkedMessage = async (
         requestIdOverridden ||
         (generateRequestId || defaultGenerateRequestId)();
     const messageSerialized = JSON.stringify(message);
+    const chunkSize = maxChunkSize || MAX_CHUNK_SIZE;
     // Build chunks first, then send sequentially (order matters for reassembly)
     const chunks: string[] = [];
-    for (let ii = 0; ii < messageSerialized.length; ii += MAX_CHUNK_SIZE) {
-        chunks.push(messageSerialized.substring(ii, ii + MAX_CHUNK_SIZE));
+    for (let ii = 0; ii < messageSerialized.length; ii += chunkSize) {
+        chunks.push(messageSerialized.substring(ii, ii + chunkSize));
     }
     await chunks.reduce<Promise<unknown>>(
         (chain, chunk) =>

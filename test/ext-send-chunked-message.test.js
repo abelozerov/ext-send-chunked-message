@@ -186,6 +186,33 @@ describe('ext-send-chunked-message', () => {
             expect(result).toBeUndefined();
         });
 
+        test('splits message using custom maxChunkSize', async () => {
+            const sendMessageFn = jest.fn().mockResolvedValue(undefined);
+            const message = 'x'.repeat(100);
+
+            await sendChunkedMessage(message, {
+                sendMessageFn,
+                maxChunkSize: 30
+            });
+
+            // JSON.stringify wraps with quotes: '"xxx...xxx"' = 102 chars
+            // 102 / 30 = 4 chunks + 1 done = 5 calls
+            const chunkCalls = sendMessageFn.mock.calls.slice(0, -1);
+            expect(chunkCalls.length).toBe(4);
+            chunkCalls.forEach(call => {
+                expect(call[0].chunk.length).toBeLessThanOrEqual(30);
+            });
+
+            // Chunks reconstruct to original serialized message
+            const reassembled = chunkCalls.map(c => c[0].chunk).join('');
+            expect(reassembled).toBe(JSON.stringify(message));
+
+            // Last call is done
+            expect(sendMessageFn).toHaveBeenLastCalledWith(
+                expect.objectContaining({ done: true })
+            );
+        });
+
         test('uses default chrome.runtime.sendMessage when no sendMessageFn provided', async () => {
             mockSendMessage.mockImplementation((msg, cb) => cb(undefined));
 

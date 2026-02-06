@@ -1,0 +1,16 @@
+{
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_title": "E2E Test"
+    },
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'"
+    },
+    "name": "E2E Test ext-send-chunked-message",
+    "manifest_version": 3,
+    "permissions": ["activeTab", "scripting"],
+    "host_permissions": ["<all_urls>"],
+    "version": "0.0.0.1"
+}

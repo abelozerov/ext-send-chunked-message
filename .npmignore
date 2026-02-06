@@ -9,3 +9,5 @@ tsconfig.json
 eslint.config.mjs
 .prettierrc.js
 .prettierignore
+playwright.config.js
+.nvmrc

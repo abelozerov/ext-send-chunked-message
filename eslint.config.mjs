@@ -5,6 +5,6 @@ export default tseslint.config(
     tseslint.configs.recommended,
     eslintConfigPrettier,
     {
-        ignores: ['dist/', 'test/', 'examples/']
+        ignores: ['dist/', 'test/', 'examples/', 'playwright.config.js']
     }
 );

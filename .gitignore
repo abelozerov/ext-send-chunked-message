@@ -2,3 +2,5 @@ node_modules/
 build/
 dist/
 package-lock.json
+test/e2e/build/
+test-results/

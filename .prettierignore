@@ -2,3 +2,5 @@ dist/
 build/
 node_modules/
 .claude/
+test/e2e/build/
+test-results/
