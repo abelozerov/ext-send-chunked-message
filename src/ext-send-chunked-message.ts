@@ -6,6 +6,8 @@ if (typeof chrome === 'undefined') {
 
 export const CHUNKED_MESSAGE_FLAG = 'CHUNKED_MESSAGE_FLAG' as const;
 export const MAX_CHUNK_SIZE: number = 32 * 1024 * 1024; // 32 MB
+const RESPONSE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const STALE_REQUEST_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 export interface ChunkedMessage {
     [CHUNKED_MESSAGE_FLAG]: boolean;
@@ -45,7 +47,17 @@ export type ChunkedMessageListener = (
     sendResponse: (response?: unknown) => void
 ) => boolean;
 
-const requestsStorage: Record<string, string[]> = {};
+const requestsStorage: Record<string, { chunks: string[]; createdAt: number }> =
+    {};
+
+const cleanupStaleRequests = (): void => {
+    const now = Date.now();
+    for (const id of Object.keys(requestsStorage)) {
+        if (now - requestsStorage[id].createdAt > STALE_REQUEST_TTL_MS) {
+            delete requestsStorage[id];
+        }
+    }
+};
 
 const defaultGenerateRequestId = (): string => self.crypto.randomUUID();
 
@@ -74,6 +86,8 @@ export const sendChunkedResponse =
         sendChunkedMessage(response, {
             sendMessageFn: sendMessageFn || sendMessageDefaultFn,
             requestId
+        }).catch(() => {
+            // Chunk sending failed — receiver will timeout waiting for remaining chunks
         });
     };
 
@@ -121,8 +135,16 @@ export const sendChunkedMessage = async (
     // If response indicates there will be a chunk message sent, adding a listener to retrieve full response
     if (response && response[CHUNKED_MESSAGE_FLAG]) {
         let listener: ChunkedMessageListener | undefined;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         try {
-            const fullResponse = await new Promise(resolve => {
+            const fullResponse = await new Promise((resolve, reject) => {
+                timeoutId = setTimeout(() => {
+                    reject(
+                        new Error(
+                            `Chunked response timed out for requestId: ${response.requestId}`
+                        )
+                    );
+                }, RESPONSE_TIMEOUT_MS);
                 listener = addOnChunkedMessageListener(
                     (fullResponseFromListener, _, sendResp) => {
                         sendResp();
@@ -135,6 +157,9 @@ export const sendChunkedMessage = async (
             });
             return fullResponse;
         } finally {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
             if (listener) {
                 removeOnChunkedMessageListener(listener);
             }
@@ -181,18 +206,25 @@ const onChunkedMessageHandlerInternal =
             }
 
             if (request.done) {
-                const fullMessageSerialized = ''.concat(
-                    ...requestsStorage[requestId]
-                );
+                const entry = requestsStorage[requestId];
+                const fullMessageSerialized = entry
+                    ? entry.chunks.join('')
+                    : '';
                 delete requestsStorage[requestId];
                 const fullMessage = JSON.parse(fullMessageSerialized);
                 // async sendResponse can be enabled inside handler
                 return handler(fullMessage, sender, sendResponse) ?? false;
             } else {
                 if (!requestsStorage[requestId]) {
-                    requestsStorage[requestId] = [];
+                    cleanupStaleRequests();
+                    requestsStorage[requestId] = {
+                        chunks: [],
+                        createdAt: Date.now()
+                    };
                 }
-                requestsStorage[requestId].push(request.chunk!);
+                if (request.chunk !== undefined) {
+                    requestsStorage[requestId].chunks.push(request.chunk);
+                }
                 sendResponse({
                     status: 'PENDING'
                 });

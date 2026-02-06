@@ -243,7 +243,9 @@ describe('ext-send-chunked-message', () => {
             expect(result).toEqual({ response: 'big data' });
         });
 
-        test('cleans up listener after receiving chunked response', async () => {
+        test('cleans up listener and timeout after receiving chunked response', async () => {
+            const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
             const sendMessageFn = jest
                 .fn()
                 .mockResolvedValueOnce(undefined)
@@ -286,8 +288,44 @@ describe('ext-send-chunked-message', () => {
 
             await resultPromise;
 
-            // Listener should have been removed
             expect(mockRemoveListener).toHaveBeenCalled();
+            expect(clearTimeoutSpy).toHaveBeenCalled();
+            clearTimeoutSpy.mockRestore();
+        });
+
+        test('times out when chunked response never completes', async () => {
+            jest.useFakeTimers();
+
+            const sendMessageFn = jest
+                .fn()
+                .mockResolvedValueOnce(undefined) // chunk
+                .mockResolvedValueOnce({
+                    // done - indicates chunked response coming
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'timeout-req'
+                });
+
+            let caughtError;
+            const resultPromise = sendChunkedMessage(
+                { data: 'test' },
+                { sendMessageFn }
+            ).catch(err => {
+                caughtError = err;
+            });
+
+            // Flush pending promises and advance past the 5-minute timeout
+            await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+            await resultPromise;
+
+            expect(caughtError).toBeDefined();
+            expect(caughtError.message).toBe(
+                'Chunked response timed out for requestId: timeout-req'
+            );
+
+            // Listener should be cleaned up even on timeout
+            expect(mockRemoveListener).toHaveBeenCalled();
+
+            jest.useRealTimers();
         });
     });
 
@@ -357,6 +395,31 @@ describe('ext-send-chunked-message', () => {
                 requestId: 'custom-uuid'
             });
         });
+
+        test('does not throw on sendChunkedMessage failure', async () => {
+            const sendMessageFn = jest
+                .fn()
+                .mockRejectedValue(new Error('send failed'));
+            const sendResponse = jest.fn();
+
+            // Should not throw — .catch() swallows the error
+            expect(() => {
+                sendChunkedResponse({ sendMessageFn })(
+                    { data: 'test' },
+                    sendResponse
+                );
+            }).not.toThrow();
+
+            // Wait for the rejected promise to be caught
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            // sendResponse was still called with the chunked flag
+            expect(sendResponse).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    [CHUNKED_MESSAGE_FLAG]: true
+                })
+            );
+        });
     });
 
     describe('addOnChunkedMessageListener', () => {
@@ -425,11 +488,8 @@ describe('ext-send-chunked-message', () => {
             expect(result).toBe(false);
         });
 
-        test('returns false for null request', () => {
+        test('returns false for null or undefined request', () => {
             expect(internalListener(null, {}, sendResponse)).toBe(false);
-        });
-
-        test('returns false for undefined request', () => {
             expect(internalListener(undefined, {}, sendResponse)).toBe(false);
         });
 
@@ -703,6 +763,149 @@ describe('ext-send-chunked-message', () => {
 
             // handler returned true (for async sendResponse), so listener should return true
             expect(result).toBe(true);
+        });
+
+        test('ignores chunks with undefined chunk property', () => {
+            // Send a message without chunk property (just the flag and requestId)
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-no-chunk'
+                },
+                {},
+                sendResponse
+            );
+
+            expect(sendResponse).toHaveBeenCalledWith({ status: 'PENDING' });
+
+            // Now send an actual chunk and complete
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-no-chunk',
+                    chunk: JSON.stringify({ ok: true })
+                },
+                {},
+                jest.fn()
+            );
+
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-no-chunk',
+                    done: true
+                },
+                {},
+                sendResponse
+            );
+
+            // Handler should receive only the actual chunk data
+            expect(handler).toHaveBeenCalledWith(
+                { ok: true },
+                {},
+                sendResponse
+            );
+        });
+
+        test('cleans up stale requests when new request starts', () => {
+            jest.useFakeTimers();
+
+            // Create a request that will become stale
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'stale-req',
+                    chunk: JSON.stringify('old')
+                },
+                {},
+                jest.fn()
+            );
+
+            // Advance time past the stale TTL (10 minutes)
+            jest.advanceTimersByTime(10 * 60 * 1000 + 1);
+
+            // Start a new request — this triggers cleanup
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'fresh-req',
+                    chunk: JSON.stringify('new')
+                },
+                {},
+                jest.fn()
+            );
+
+            // Complete the stale request — should throw because it was cleaned up
+            expect(() => {
+                internalListener(
+                    {
+                        [CHUNKED_MESSAGE_FLAG]: true,
+                        requestId: 'stale-req',
+                        done: true
+                    },
+                    {},
+                    jest.fn()
+                );
+            }).toThrow();
+
+            // Complete the fresh request — should work fine
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'fresh-req',
+                    done: true
+                },
+                {},
+                sendResponse
+            );
+
+            expect(handler).toHaveBeenCalledWith('new', {}, sendResponse);
+
+            jest.useRealTimers();
+        });
+
+        test('does not clean up requests within TTL', () => {
+            jest.useFakeTimers();
+
+            // Create a request
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'not-stale-req',
+                    chunk: JSON.stringify('data')
+                },
+                {},
+                jest.fn()
+            );
+
+            // Advance time but stay within TTL
+            jest.advanceTimersByTime(5 * 60 * 1000);
+
+            // Start another request — triggers cleanup but should not remove the first
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'another-req',
+                    chunk: JSON.stringify('other')
+                },
+                {},
+                jest.fn()
+            );
+
+            // Complete the first request — should still work
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'not-stale-req',
+                    done: true
+                },
+                {},
+                sendResponse
+            );
+
+            expect(handler).toHaveBeenCalledWith('data', {}, sendResponse);
+
+            jest.useRealTimers();
         });
     });
 });
