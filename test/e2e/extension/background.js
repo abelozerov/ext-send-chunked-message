@@ -4,44 +4,39 @@ import {
     CHUNKED_MESSAGE_FLAG
 } from '../../../dist/ext-send-chunked-message';
 
-const MAX_CHUNK_SIZE = 1024;
+const CUSTOM_CHUNK_SIZE = 1024;
 
 // Count incoming chunks per requestId
 const chunkCounts = {};
+let lastCompletedRequestId = null;
 
-chrome.runtime.onMessage.addListener((request, sender) => {
-    if (
-        request &&
-        request[CHUNKED_MESSAGE_FLAG] &&
-        request.requestId &&
-        request.chunk !== undefined
-    ) {
-        if (!chunkCounts[request.requestId]) {
-            chunkCounts[request.requestId] = 0;
+chrome.runtime.onMessage.addListener(request => {
+    if (request && request[CHUNKED_MESSAGE_FLAG] && request.requestId) {
+        if (request.chunk !== undefined) {
+            if (!chunkCounts[request.requestId]) {
+                chunkCounts[request.requestId] = 0;
+            }
+            chunkCounts[request.requestId]++;
         }
-        chunkCounts[request.requestId]++;
+        if (request.done) {
+            lastCompletedRequestId = request.requestId;
+        }
     }
 });
 
 addOnChunkedMessageListener((message, sender, sendResponse) => {
-    // Find the chunk count for this completed request
-    // The requestId was cleaned up from storage, but we tracked it in chunkCounts
-    const count = Object.values(chunkCounts).reduce((a, b) => a + b, 0);
+    const requestChunkCount = chunkCounts[lastCompletedRequestId] || 0;
 
-    const largeResponse = 'y'.repeat(MAX_CHUNK_SIZE * 3);
+    const responsePayload = {
+        data: 'y'.repeat(CUSTOM_CHUNK_SIZE * 3),
+        requestChunkCount,
+        requestMessageLength: typeof message === 'string' ? message.length : JSON.stringify(message).length
+    };
 
     sendChunkedResponse({
         sendMessageFn: msg => chrome.tabs.sendMessage(sender.tab.id, msg),
-        maxChunkSize: MAX_CHUNK_SIZE
-    })(largeResponse, sendResponse);
-
-    // Send chunk count to content script after a short delay
-    setTimeout(() => {
-        chrome.tabs.sendMessage(sender.tab.id, {
-            type: 'CHUNK_COUNT',
-            count
-        });
-    }, 500);
+        maxChunkSize: CUSTOM_CHUNK_SIZE
+    })(responsePayload, sendResponse);
 
     return true;
 });
