@@ -11,8 +11,9 @@
     "build": "tsc",
     "pretest": "npm run build",
     "test": "jest",
+    "lint": "eslint",
     "test:types": "tsd",
-    "prepublishOnly": "npm run build && npm test && npm run test:types"
+    "prepublishOnly": "npm run build && npm run lint && npm test && npm run test:types"
   },
   "repository": {
     "type": "git",
@@ -43,8 +44,10 @@
     "directory": "test"
   },
   "devDependencies": {
+    "eslint": "^9.39.2",
     "jest": "^30.2.0",
     "tsd": "^0.33.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.54.0"
   }
 }

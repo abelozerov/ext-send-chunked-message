@@ -90,19 +90,19 @@ export const sendChunkedMessage = async (
     // Generating requestId for the message
     const requestId = requestIdOverridden || (generateRequestId || defaultGenerateRequestId)();
     const messageSerialized = JSON.stringify(message);
-    const len = messageSerialized.length;
-    const step = MAX_CHUNK_SIZE;
-    let ii = 0;
-    while (ii < len) {
-        const nextIndex = Math.min(ii + step, len);
-        const substr = messageSerialized.substring(ii, nextIndex);
-        await sendMessage({
+    // Build chunks first, then send sequentially (order matters for reassembly)
+    const chunks: string[] = [];
+    for (let ii = 0; ii < messageSerialized.length; ii += MAX_CHUNK_SIZE) {
+        chunks.push(messageSerialized.substring(ii, ii + MAX_CHUNK_SIZE));
+    }
+    await chunks.reduce<Promise<unknown>>(
+        (chain, chunk) => chain.then(() => sendMessage({
             [CHUNKED_MESSAGE_FLAG]: true,
             requestId,
-            chunk: substr
-        });
-        ii = nextIndex;
-    }
+            chunk
+        })),
+        Promise.resolve(null)
+    );
     // At least 2 messages will be sent. Last one - with done: true
     const response = await sendMessage({
         [CHUNKED_MESSAGE_FLAG]: true,
@@ -173,10 +173,7 @@ const onChunkedMessageHandlerInternal = (
         }
 
         if (request.done) {
-            const fullMessageSerialized = ''.concat.apply(
-                '',
-                requestsStorage[requestId]
-            );
+            const fullMessageSerialized = ''.concat(...requestsStorage[requestId]);
             delete requestsStorage[requestId];
             const fullMessage = JSON.parse(fullMessageSerialized);
             // async sendResponse can be enabled inside handler
