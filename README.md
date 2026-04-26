@@ -25,6 +25,7 @@ sendChunkedMessage(largeMessage)
 ## Usage - receive large message on background and send normal (unchunked) response
 
 background.js:
+
 ```
 import { addOnChunkedMessageListener } from 'ext-send-chunked-message'
 
@@ -42,6 +43,7 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 ## Usage - receive large message on background and send large response
 
 background.js:
+
 ```
 import { addOnChunkedMessageListener, sendChunkedResponse } from 'ext-send-chunked-message'
 
@@ -59,9 +61,50 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 })
 ```
 
-## Supported environment variables
+## Custom request ID generation
 
-`EXT_SEND_CHUNKED_MESSAGE_MAX_CHUNK_SIZE` - max chunk size in bytes. Default is 32 * 1024 * 1024 (32Mb)
+By default, `self.crypto.randomUUID()` is used to generate request IDs. You can provide your own function via the `generateRequestId` option:
+
+```
+import { sendChunkedMessage } from 'ext-send-chunked-message'
+import { v4 as uuid } from 'uuid'
+
+sendChunkedMessage(largeMessage, {
+    generateRequestId: uuid
+})
+```
+
+The same option is available on `sendChunkedResponse`:
+
+```
+sendChunkedResponse({
+    generateRequestId: uuid,
+    sendMessageFn: message =>
+        chrome.tabs.sendMessage(sender.tab.id, message)
+})(largeResponse, sendResponse)
+```
+
+## Custom chunk size
+
+By default, messages are split into 32 MB chunks. You can change this via the `maxChunkSize` option (in bytes):
+
+```
+import { sendChunkedMessage } from 'ext-send-chunked-message'
+
+sendChunkedMessage(largeMessage, {
+    maxChunkSize: 1024 * 1024 // 1 MB chunks
+})
+```
+
+The same option is available on `sendChunkedResponse`:
+
+```
+sendChunkedResponse({
+    maxChunkSize: 1024 * 1024, // 1 MB chunks
+    sendMessageFn: message =>
+        chrome.tabs.sendMessage(sender.tab.id, message)
+})(largeResponse, sendResponse)
+```
 
 ## Examples
 

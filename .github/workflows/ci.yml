@@ -1,0 +1,21 @@
+name: CI
+
+on:
+    pull_request:
+    workflow_call:
+
+jobs:
+    ci:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+            - run: npm install
+            - run: npm run build
+            - run: npm run lint
+            - run: npm test
+            - run: npm run test:types
+            - run: npx playwright install --with-deps chromium
+            - run: xvfb-run npm run test:e2e

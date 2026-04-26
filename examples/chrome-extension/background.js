@@ -1,10 +1,15 @@
-import { addOnChunkedMessageListener, sendChunkedResponse, MAX_CHUNK_SIZE } from 'ext-send-chunked-message'
+import {
+    addOnChunkedMessageListener,
+    sendChunkedResponse,
+    MAX_CHUNK_SIZE
+} from 'ext-send-chunked-message';
 
 chrome.action.onClicked.addListener(tab => {
     const tabId = tab.id;
-    chrome.scripting.executeScript(
-        { target: { tabId }, files: ['content.js'] }
-    );
+    chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js']
+    });
 });
 
 addOnChunkedMessageListener((message, sender, sendResponse) => {
@@ -19,4 +24,4 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
     })(largeResponse, sendResponse);
 
     return true; // async listener
-})
+});

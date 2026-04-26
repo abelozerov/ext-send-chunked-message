@@ -1,5 +1,13 @@
 node_modules/
 examples/
+src/
 build/
+test/
 package-lock.json
 .github
+tsconfig.json
+eslint.config.mjs
+.prettierrc.js
+.prettierignore
+playwright.config.js
+.nvmrc
