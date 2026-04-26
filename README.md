@@ -12,7 +12,7 @@ Standard `chrome.runtime.sendMessage` has a message size limit ~32Mb. When you e
 
 content.js:
 
-```
+```js
 import { sendChunkedMessage } from 'ext-send-chunked-message'
 
 sendChunkedMessage(largeMessage)
@@ -22,11 +22,24 @@ sendChunkedMessage(largeMessage)
     })
 ```
 
+In TypeScript, pass the expected response type as a generic to skip the cast:
+
+```ts
+import { sendChunkedMessage } from 'ext-send-chunked-message';
+
+interface MyResponse {
+    status: 'OK' | 'FAIL';
+}
+
+const response = await sendChunkedMessage<MyResponse>(largeMessage);
+// response is typed as MyResponse
+```
+
 ## Usage - receive large message on background and send normal (unchunked) response
 
 background.js:
 
-```
+```js
 import { addOnChunkedMessageListener } from 'ext-send-chunked-message'
 
 addOnChunkedMessageListener((message, sender, sendResponse) => {
@@ -44,7 +57,7 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 
 background.js:
 
-```
+```js
 import { addOnChunkedMessageListener, sendChunkedResponse } from 'ext-send-chunked-message'
 
 addOnChunkedMessageListener((message, sender, sendResponse) => {
@@ -65,45 +78,43 @@ addOnChunkedMessageListener((message, sender, sendResponse) => {
 
 By default, `self.crypto.randomUUID()` is used to generate request IDs. You can provide your own function via the `generateRequestId` option:
 
-```
-import { sendChunkedMessage } from 'ext-send-chunked-message'
-import { v4 as uuid } from 'uuid'
+```js
+import { sendChunkedMessage } from 'ext-send-chunked-message';
+import { v4 as uuid } from 'uuid';
 
 sendChunkedMessage(largeMessage, {
     generateRequestId: uuid
-})
+});
 ```
 
 The same option is available on `sendChunkedResponse`:
 
-```
+```js
 sendChunkedResponse({
     generateRequestId: uuid,
-    sendMessageFn: message =>
-        chrome.tabs.sendMessage(sender.tab.id, message)
-})(largeResponse, sendResponse)
+    sendMessageFn: message => chrome.tabs.sendMessage(sender.tab.id, message)
+})(largeResponse, sendResponse);
 ```
 
 ## Custom chunk size
 
 By default, messages are split into 32 MB chunks. You can change this via the `maxChunkSize` option (in bytes):
 
-```
-import { sendChunkedMessage } from 'ext-send-chunked-message'
+```js
+import { sendChunkedMessage } from 'ext-send-chunked-message';
 
 sendChunkedMessage(largeMessage, {
     maxChunkSize: 1024 * 1024 // 1 MB chunks
-})
+});
 ```
 
 The same option is available on `sendChunkedResponse`:
 
-```
+```js
 sendChunkedResponse({
     maxChunkSize: 1024 * 1024, // 1 MB chunks
-    sendMessageFn: message =>
-        chrome.tabs.sendMessage(sender.tab.id, message)
-})(largeResponse, sendResponse)
+    sendMessageFn: message => chrome.tabs.sendMessage(sender.tab.id, message)
+})(largeResponse, sendResponse);
 ```
 
 ## Examples
