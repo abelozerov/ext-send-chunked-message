@@ -54,6 +54,22 @@ expectType<Promise<unknown>>(
 // Empty options is fine
 expectType<Promise<unknown>>(sendChunkedMessage({ data: 'test' }, {}));
 
+// Caller can specify the expected response type via the type parameter,
+// avoiding casts at the call site.
+interface MyResponse {
+    status: 'OK' | 'FAIL';
+    data?: string;
+}
+expectType<Promise<MyResponse>>(
+    sendChunkedMessage<MyResponse>({ data: 'test' })
+);
+expectType<Promise<MyResponse>>(
+    sendChunkedMessage<MyResponse>(
+        { data: 'test' },
+        { sendMessageFn: msg => Promise.resolve(null) }
+    )
+);
+
 // Missing required message argument
 expectError(sendChunkedMessage());
 

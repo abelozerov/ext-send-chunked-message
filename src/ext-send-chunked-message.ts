@@ -102,7 +102,7 @@ export const sendChunkedResponse =
  * Use to send chunked message.
  * Receiver should register listener with addOnChunkedMessageListener
  */
-export const sendChunkedMessage = async (
+export const sendChunkedMessage = async <TResponse = unknown>(
     message: unknown,
     {
         sendMessageFn,
@@ -110,7 +110,7 @@ export const sendChunkedMessage = async (
         generateRequestId,
         maxChunkSize
     }: SendChunkedMessageOptions = {}
-): Promise<unknown> => {
+): Promise<TResponse> => {
     const sendMessage = sendMessageFn || sendMessageDefaultFn;
     // Generating requestId for the message
     const requestId =
@@ -164,7 +164,7 @@ export const sendChunkedMessage = async (
                     }
                 );
             });
-            return fullResponse;
+            return fullResponse as TResponse;
         } finally {
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
@@ -174,7 +174,7 @@ export const sendChunkedMessage = async (
             }
         }
     } else {
-        return response;
+        return response as TResponse;
     }
 };
 
