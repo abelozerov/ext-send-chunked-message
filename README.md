@@ -8,7 +8,7 @@ Standard `chrome.runtime.sendMessage` has a message size limit of 64 MiB, applie
 
 `npm i ext-send-chunked-message`
 
-## Usage - send large message from content script to backround:
+## Usage - send large message from content script to background:
 
 content.js:
 
@@ -125,6 +125,23 @@ sendChunkedResponse({
     maxChunkSize: 1024 * 1024, // 1 MB chunks
     sendMessageFn: message => chrome.tabs.sendMessage(sender.tab.id, message)
 })(largeResponse, sendResponse);
+```
+
+## Error handling
+
+`sendChunkedMessage` rejects when:
+
+- a chunk fails to send (e.g. no receiver — `chrome.runtime.lastError` is propagated);
+- the receiver could not reassemble the message (e.g. its service worker restarted mid-transfer);
+- the receiver started a chunked response but failed to deliver it;
+- a chunked response does not complete within 5 minutes.
+
+```js
+try {
+    const response = await sendChunkedMessage(largeMessage);
+} catch (err) {
+    // transport or reassembly failure
+}
 ```
 
 ## Examples
