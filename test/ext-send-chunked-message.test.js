@@ -397,6 +397,61 @@ describe('ext-send-chunked-message', () => {
             clearTimeoutSpy.mockRestore();
         });
 
+        test('rejects when message is not JSON-serializable', async () => {
+            const sendMessageFn = jest.fn().mockResolvedValue(undefined);
+
+            await expect(
+                sendChunkedMessage(undefined, { sendMessageFn })
+            ).rejects.toThrow('not JSON-serializable');
+            expect(sendMessageFn).not.toHaveBeenCalled();
+        });
+
+        test('rejects promptly when receiver reports a failed chunked response', async () => {
+            const sendMessageFn = jest
+                .fn()
+                .mockResolvedValueOnce(undefined) // chunk
+                .mockResolvedValueOnce({
+                    // done - indicates chunked response coming
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'failed-resp'
+                });
+
+            let caughtError;
+            const resultPromise = sendChunkedMessage(
+                { data: 'test' },
+                { sendMessageFn }
+            ).catch(err => {
+                caughtError = err;
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            const registeredListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
+
+            // Receiver reports it could not deliver the chunked response
+            registeredListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'failed-resp',
+                    isResponse: true,
+                    error: 'Failed to send chunked response: send failed'
+                },
+                {},
+                jest.fn()
+            );
+
+            await resultPromise;
+
+            expect(caughtError).toBeDefined();
+            expect(caughtError.message).toBe(
+                'Failed to send chunked response: send failed'
+            );
+            expect(mockRemoveListener).toHaveBeenCalled();
+        });
+
         test('times out when chunked response never completes', async () => {
             jest.useFakeTimers();
 
@@ -430,6 +485,74 @@ describe('ext-send-chunked-message', () => {
             expect(mockRemoveListener).toHaveBeenCalled();
 
             jest.useRealTimers();
+        });
+
+        test('clears accumulated response chunks after timeout', async () => {
+            jest.useFakeTimers();
+
+            const sendMessageFn = jest
+                .fn()
+                .mockResolvedValueOnce(undefined) // chunk
+                .mockResolvedValueOnce({
+                    // done - indicates chunked response coming
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'to-clean'
+                });
+
+            const resultPromise = sendChunkedMessage(
+                { data: 'test' },
+                { sendMessageFn }
+            ).catch(() => {});
+
+            // Flush pending promises so the temporary listener registers
+            await jest.advanceTimersByTimeAsync(1);
+
+            const tempListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
+
+            // Deliver a partial response chunk, which gets stored
+            tempListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'to-clean',
+                    chunk: '{"partial":',
+                    isResponse: true
+                },
+                {},
+                jest.fn()
+            );
+
+            await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+            await resultPromise;
+
+            jest.useRealTimers();
+
+            // Storage entry was purged: done for the same requestId finds nothing
+            const lateHandler = jest.fn();
+            addOnChunkedMessageListener(lateHandler);
+            const generalListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
+            const lateSendResponse = jest.fn();
+            generalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'to-clean',
+                    done: true
+                },
+                {},
+                lateSendResponse
+            );
+
+            expect(lateHandler).not.toHaveBeenCalled();
+            expect(lateSendResponse).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    error: expect.stringContaining('No chunks stored')
+                })
+            );
         });
     });
 
@@ -541,6 +664,31 @@ describe('ext-send-chunked-message', () => {
                 })
             );
         });
+
+        test('sends an error message to the receiver when response sending fails', async () => {
+            const sendMessageFn = jest
+                .fn()
+                .mockRejectedValue(new Error('send failed'));
+            const sendResponse = jest.fn();
+
+            sendChunkedResponse({ sendMessageFn })(
+                { data: 'test' },
+                sendResponse
+            );
+
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            const lastCall =
+                sendMessageFn.mock.calls[sendMessageFn.mock.calls.length - 1];
+            expect(lastCall[0]).toEqual(
+                expect.objectContaining({
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'test-uuid-1234',
+                    isResponse: true,
+                    error: 'Failed to send chunked response: send failed'
+                })
+            );
+        });
     });
 
     describe('addOnChunkedMessageListener', () => {
@@ -560,6 +708,26 @@ describe('ext-send-chunked-message', () => {
 
             expect(typeof listener).toBe('function');
             expect(listener).toBe(mockAddListener.mock.calls[0][0]);
+        });
+    });
+
+    describe('outside Chrome Extension context', () => {
+        test('import does not throw; chrome API use throws', () => {
+            const savedChrome = global.chrome;
+            delete global.chrome;
+            try {
+                jest.isolateModules(() => {
+                    const mod = require('../dist/ext-send-chunked-message');
+                    expect(() =>
+                        mod.addOnChunkedMessageListener(jest.fn())
+                    ).toThrow('Chrome Extension context only');
+                    expect(() =>
+                        mod.removeOnChunkedMessageListener(jest.fn())
+                    ).toThrow('Chrome Extension context only');
+                });
+            } finally {
+                global.chrome = savedChrome;
+            }
         });
     });
 
@@ -1052,6 +1220,65 @@ describe('ext-send-chunked-message', () => {
                     [CHUNKED_MESSAGE_FLAG]: true,
                     requestId: 'corrupt-req',
                     error: expect.stringContaining('Failed to reassemble')
+                })
+            );
+        });
+
+        test('invokes onError and clears stored chunks when an error message arrives', () => {
+            const errorHandler = jest.fn();
+            const onError = jest.fn();
+            addOnChunkedMessageListener(errorHandler, {
+                requestIdToMonitor: 'err-req',
+                onError
+            });
+            const filteredListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
+
+            filteredListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'err-req',
+                    chunk: '{"partial":',
+                    isResponse: true
+                },
+                {},
+                jest.fn()
+            );
+
+            const result = filteredListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'err-req',
+                    isResponse: true,
+                    error: 'Failed to send chunked response: boom'
+                },
+                {},
+                jest.fn()
+            );
+
+            expect(result).toBe(false);
+            expect(errorHandler).not.toHaveBeenCalled();
+            expect(onError).toHaveBeenCalledWith(
+                new Error('Failed to send chunked response: boom')
+            );
+
+            // Stored chunks were cleared: a later done finds nothing
+            filteredListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'err-req',
+                    done: true,
+                    isResponse: true
+                },
+                {},
+                sendResponse
+            );
+            expect(errorHandler).not.toHaveBeenCalled();
+            expect(sendResponse).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    error: expect.stringContaining('No chunks stored')
                 })
             );
         });

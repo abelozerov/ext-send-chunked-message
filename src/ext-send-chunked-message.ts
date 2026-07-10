@@ -1,9 +1,3 @@
-if (typeof chrome === 'undefined') {
-    throw new Error(
-        'ext-send-chunked-message package can be used in Chrome Extension context only'
-    );
-}
-
 export const CHUNKED_MESSAGE_FLAG = 'CHUNKED_MESSAGE_FLAG' as const;
 // Chrome enforces mojom::kMaxMessageBytes (64 MiB) on the UTF-8 byte length of
 // the JSON-serialized message (see extensions/renderer/api/messaging/messaging_util.cc)
@@ -59,6 +53,7 @@ export interface SendChunkedResponseOptions {
 
 export interface AddOnChunkedMessageListenerOptions {
     requestIdToMonitor?: string;
+    onError?: (error: Error) => void;
 }
 
 export type OnChunkedMessageHandler = (
@@ -87,7 +82,16 @@ const cleanupStaleRequests = (): void => {
 
 const defaultGenerateRequestId = (): string => self.crypto.randomUUID();
 
+const assertChromeContext = (): void => {
+    if (typeof chrome === 'undefined' || !chrome.runtime) {
+        throw new Error(
+            'ext-send-chunked-message package can be used in Chrome Extension context only'
+        );
+    }
+};
+
 const sendMessageDefaultFn: SendMessageFn = function (message) {
+    assertChromeContext();
     return new Promise((resolve, reject) =>
         chrome.runtime.sendMessage(message, response => {
             const lastError = chrome.runtime.lastError;
@@ -118,13 +122,24 @@ export const sendChunkedResponse =
         });
         // At this point content script has added a listener with addOnMessageWithChunksListener
         // Sending file contents as chunked messages
+        const sendMessage = sendMessageFn || sendMessageDefaultFn;
         sendChunkedMessage(response, {
-            sendMessageFn: sendMessageFn || sendMessageDefaultFn,
+            sendMessageFn: sendMessage,
             requestId,
             maxChunkSize,
             isResponse: true
-        }).catch(() => {
-            // Chunk sending failed — receiver will timeout waiting for remaining chunks
+        }).catch((err: unknown) => {
+            // Let the receiver reject right away instead of waiting for its timeout
+            sendMessage({
+                [CHUNKED_MESSAGE_FLAG]: true,
+                requestId,
+                isResponse: true,
+                error: `Failed to send chunked response: ${
+                    err instanceof Error ? err.message : String(err)
+                }`
+            }).catch(() => {
+                // Error message did not go through either — receiver will time out
+            });
         });
     };
 
@@ -148,6 +163,11 @@ export const sendChunkedMessage = async <TResponse = unknown>(
         requestIdOverridden ||
         (generateRequestId || defaultGenerateRequestId)();
     const messageSerialized = JSON.stringify(message);
+    if (messageSerialized === undefined) {
+        throw new Error(
+            'Message is not JSON-serializable (JSON.stringify returned undefined)'
+        );
+    }
     const chunkSize = Math.max(1, maxChunkSize || DEFAULT_CHUNK_SIZE);
     // Build chunks first, then send sequentially (order matters for reassembly)
     const chunks: string[] = [];
@@ -197,7 +217,8 @@ export const sendChunkedMessage = async <TResponse = unknown>(
                         resolve(fullResponseFromListener);
                     },
                     {
-                        requestIdToMonitor: response.requestId
+                        requestIdToMonitor: response.requestId,
+                        onError: reject
                     }
                 );
             });
@@ -209,6 +230,8 @@ export const sendChunkedMessage = async <TResponse = unknown>(
             if (listener) {
                 removeOnChunkedMessageListener(listener);
             }
+            // Drop chunks accumulated for a response that timed out or failed
+            delete requestsStorage[response.requestId];
         }
     } else {
         return response as TResponse;
@@ -223,6 +246,7 @@ export const addOnChunkedMessageListener = (
     handler: OnChunkedMessageHandler,
     options?: AddOnChunkedMessageListenerOptions
 ): ChunkedMessageListener => {
+    assertChromeContext();
     const newListener = onChunkedMessageHandlerInternal(handler, options);
     chrome.runtime.onMessage.addListener(newListener);
     return newListener;
@@ -234,13 +258,14 @@ export const addOnChunkedMessageListener = (
 export const removeOnChunkedMessageListener = (
     listener: ChunkedMessageListener
 ): void => {
+    assertChromeContext();
     chrome.runtime.onMessage.removeListener(listener);
 };
 
 const onChunkedMessageHandlerInternal =
     (
         handler: OnChunkedMessageHandler,
-        { requestIdToMonitor }: AddOnChunkedMessageListenerOptions = {}
+        { requestIdToMonitor, onError }: AddOnChunkedMessageListenerOptions = {}
     ): ChunkedMessageListener =>
     (request, sender, sendResponse) => {
         if (request && request[CHUNKED_MESSAGE_FLAG] && request.requestId) {
@@ -254,6 +279,16 @@ const onChunkedMessageHandlerInternal =
             // Response traffic belongs to the listener that monitors its requestId;
             // a general listener must not consume it as an incoming request
             if (!requestIdToMonitor && request.isResponse) {
+                return false;
+            }
+
+            // Sender aborted the transfer
+            if (request.error !== undefined) {
+                delete requestsStorage[requestId];
+                if (onError) {
+                    onError(new Error(request.error));
+                }
+                sendResponse();
                 return false;
             }
 
