@@ -1,6 +1,7 @@
 import { expectType, expectError } from 'tsd';
 import {
     CHUNKED_MESSAGE_FLAG,
+    DEFAULT_CHUNK_SIZE,
     MAX_CHUNK_SIZE,
     sendChunkedMessage,
     sendChunkedResponse,
@@ -18,6 +19,7 @@ import {
 // --- Constants ---
 
 expectType<'CHUNKED_MESSAGE_FLAG'>(CHUNKED_MESSAGE_FLAG);
+expectType<number>(DEFAULT_CHUNK_SIZE);
 expectType<number>(MAX_CHUNK_SIZE);
 
 // --- sendChunkedMessage ---
@@ -154,6 +156,19 @@ const chunkedMsgDone: ChunkedMessage = {
     CHUNKED_MESSAGE_FLAG: true,
     requestId: 'abc',
     done: true
+};
+
+const chunkedMsgResponse: ChunkedMessage = {
+    CHUNKED_MESSAGE_FLAG: true,
+    requestId: 'abc',
+    chunk: '{"data":"test"}',
+    isResponse: true
+};
+
+const chunkedMsgError: ChunkedMessage = {
+    CHUNKED_MESSAGE_FLAG: true,
+    requestId: 'abc',
+    error: 'reassembly failed'
 };
 
 // --- SendMessageFn type ---

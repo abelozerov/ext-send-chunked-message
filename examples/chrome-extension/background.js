@@ -1,7 +1,7 @@
 import {
     addOnChunkedMessageListener,
     sendChunkedResponse,
-    MAX_CHUNK_SIZE
+    DEFAULT_CHUNK_SIZE
 } from 'ext-send-chunked-message';
 
 chrome.action.onClicked.addListener(tab => {
@@ -15,7 +15,7 @@ chrome.action.onClicked.addListener(tab => {
 addOnChunkedMessageListener((message, sender, sendResponse) => {
     console.log('large message received. Length: ', message.length);
 
-    const largeResponse = 'y'.repeat(MAX_CHUNK_SIZE * 3);
+    const largeResponse = 'y'.repeat(DEFAULT_CHUNK_SIZE * 3);
 
     console.log('sending large response. Length: ', largeResponse.length);
     sendChunkedResponse({
