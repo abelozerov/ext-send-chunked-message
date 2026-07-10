@@ -5,7 +5,28 @@ if (typeof chrome === 'undefined') {
 }
 
 export const CHUNKED_MESSAGE_FLAG = 'CHUNKED_MESSAGE_FLAG' as const;
-export const MAX_CHUNK_SIZE: number = 32 * 1024 * 1024; // 32 MB
+// Chrome enforces mojom::kMaxMessageBytes (64 MiB) on the UTF-8 byte length of
+// the JSON-serialized message (see extensions/renderer/api/messaging/messaging_util.cc)
+const CHROME_MESSAGE_SIZE_LIMIT = 64 * 1024 * 1024;
+// Headroom for the envelope: flag, requestId, isResponse and JSON punctuation
+const ENVELOPE_OVERHEAD = 1024;
+// A chunk is measured in UTF-16 code units, but the limit applies to UTF-8
+// bytes of the chunk re-serialized inside the envelope. A chunk is a slice of
+// JSON.stringify output, so it contains no raw control characters or lone
+// surrogates (except at most two produced by slicing, covered by the envelope
+// headroom); the worst remaining inflation is 3x — 2x for escaping '"' and
+// '\', 3x for UTF-8 encoding of non-ASCII. A third of the limit is therefore
+// always safe to send, with no need to measure the actual encoded size.
+// Payloads known to inflate less can pass a bigger maxChunkSize (see README)
+export const DEFAULT_CHUNK_SIZE: number = Math.floor(
+    (CHROME_MESSAGE_SIZE_LIMIT - ENVELOPE_OVERHEAD) / 3
+);
+/**
+ * @deprecated Use DEFAULT_CHUNK_SIZE. This is the default chunk size, not a
+ * maximum — maxChunkSize may be set higher for payloads that inflate less
+ * than the worst case (e.g. base64).
+ */
+export const MAX_CHUNK_SIZE: number = DEFAULT_CHUNK_SIZE;
 const RESPONSE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const STALE_REQUEST_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -14,6 +35,8 @@ export interface ChunkedMessage {
     requestId: string;
     chunk?: string;
     done?: boolean;
+    isResponse?: boolean;
+    error?: string;
 }
 
 export type SendMessageFn = (
@@ -25,6 +48,7 @@ export interface SendChunkedMessageOptions {
     requestId?: string;
     generateRequestId?: () => string;
     maxChunkSize?: number;
+    isResponse?: boolean;
 }
 
 export interface SendChunkedResponseOptions {
@@ -64,9 +88,14 @@ const cleanupStaleRequests = (): void => {
 const defaultGenerateRequestId = (): string => self.crypto.randomUUID();
 
 const sendMessageDefaultFn: SendMessageFn = function (message) {
-    return new Promise(resolve =>
+    return new Promise((resolve, reject) =>
         chrome.runtime.sendMessage(message, response => {
-            resolve(response);
+            const lastError = chrome.runtime.lastError;
+            if (lastError) {
+                reject(new Error(lastError.message));
+            } else {
+                resolve(response);
+            }
         })
     );
 };
@@ -92,7 +121,8 @@ export const sendChunkedResponse =
         sendChunkedMessage(response, {
             sendMessageFn: sendMessageFn || sendMessageDefaultFn,
             requestId,
-            maxChunkSize
+            maxChunkSize,
+            isResponse: true
         }).catch(() => {
             // Chunk sending failed — receiver will timeout waiting for remaining chunks
         });
@@ -108,7 +138,8 @@ export const sendChunkedMessage = async <TResponse = unknown>(
         sendMessageFn,
         requestId: requestIdOverridden,
         generateRequestId,
-        maxChunkSize
+        maxChunkSize,
+        isResponse
     }: SendChunkedMessageOptions = {}
 ): Promise<TResponse> => {
     const sendMessage = sendMessageFn || sendMessageDefaultFn;
@@ -117,7 +148,7 @@ export const sendChunkedMessage = async <TResponse = unknown>(
         requestIdOverridden ||
         (generateRequestId || defaultGenerateRequestId)();
     const messageSerialized = JSON.stringify(message);
-    const chunkSize = maxChunkSize || MAX_CHUNK_SIZE;
+    const chunkSize = Math.max(1, maxChunkSize || DEFAULT_CHUNK_SIZE);
     // Build chunks first, then send sequentially (order matters for reassembly)
     const chunks: string[] = [];
     for (let ii = 0; ii < messageSerialized.length; ii += chunkSize) {
@@ -129,7 +160,8 @@ export const sendChunkedMessage = async <TResponse = unknown>(
                 sendMessage({
                     [CHUNKED_MESSAGE_FLAG]: true,
                     requestId,
-                    chunk
+                    chunk,
+                    ...(isResponse ? { isResponse: true } : {})
                 })
             ),
         Promise.resolve(null)
@@ -138,11 +170,16 @@ export const sendChunkedMessage = async <TResponse = unknown>(
     const response = await sendMessage({
         [CHUNKED_MESSAGE_FLAG]: true,
         requestId,
-        done: true
+        done: true,
+        ...(isResponse ? { isResponse: true } : {})
     });
 
-    // If response indicates there will be a chunk message sent, adding a listener to retrieve full response
     if (response && response[CHUNKED_MESSAGE_FLAG]) {
+        // Receiver failed to reassemble the message
+        if (response.error) {
+            throw new Error(response.error);
+        }
+        // Response indicates there will be a chunked message sent, adding a listener to retrieve full response
         let listener: ChunkedMessageListener | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         try {
@@ -214,13 +251,36 @@ const onChunkedMessageHandlerInternal =
                 return false;
             }
 
+            // Response traffic belongs to the listener that monitors its requestId;
+            // a general listener must not consume it as an incoming request
+            if (!requestIdToMonitor && request.isResponse) {
+                return false;
+            }
+
             if (request.done) {
                 const entry = requestsStorage[requestId];
-                const fullMessageSerialized = entry
-                    ? entry.chunks.join('')
-                    : '';
                 delete requestsStorage[requestId];
-                const fullMessage = JSON.parse(fullMessageSerialized);
+                if (!entry) {
+                    // Chunks never arrived or were dropped (e.g. the service
+                    // worker restarted mid-transfer, or the request went stale)
+                    sendResponse({
+                        [CHUNKED_MESSAGE_FLAG]: true,
+                        requestId,
+                        error: `No chunks stored for requestId: ${requestId} — receiver may have restarted mid-transfer`
+                    });
+                    return false;
+                }
+                let fullMessage: unknown;
+                try {
+                    fullMessage = JSON.parse(entry.chunks.join(''));
+                } catch {
+                    sendResponse({
+                        [CHUNKED_MESSAGE_FLAG]: true,
+                        requestId,
+                        error: `Failed to reassemble chunked message for requestId: ${requestId}`
+                    });
+                    return false;
+                }
                 // async sendResponse can be enabled inside handler
                 return handler(fullMessage, sender, sendResponse) ?? false;
             } else {

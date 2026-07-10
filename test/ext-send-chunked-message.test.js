@@ -23,6 +23,7 @@ global.self = {
 
 const {
     CHUNKED_MESSAGE_FLAG,
+    DEFAULT_CHUNK_SIZE,
     MAX_CHUNK_SIZE,
     sendChunkedMessage,
     sendChunkedResponse,
@@ -41,8 +42,14 @@ describe('ext-send-chunked-message', () => {
             expect(CHUNKED_MESSAGE_FLAG).toBe('CHUNKED_MESSAGE_FLAG');
         });
 
-        test('MAX_CHUNK_SIZE defaults to 32MB', () => {
-            expect(MAX_CHUNK_SIZE).toBe(32 * 1024 * 1024);
+        test('DEFAULT_CHUNK_SIZE is a third of the Chrome 64 MiB message size limit', () => {
+            expect(DEFAULT_CHUNK_SIZE).toBe(
+                Math.floor((64 * 1024 * 1024 - 1024) / 3)
+            );
+        });
+
+        test('MAX_CHUNK_SIZE is kept as an alias of DEFAULT_CHUNK_SIZE', () => {
+            expect(MAX_CHUNK_SIZE).toBe(DEFAULT_CHUNK_SIZE);
         });
     });
 
@@ -68,12 +75,12 @@ describe('ext-send-chunked-message', () => {
 
         test('splits large message into multiple chunks', async () => {
             const sendMessageFn = jest.fn().mockResolvedValue(undefined);
-            const largeString = 'x'.repeat(MAX_CHUNK_SIZE + 100);
+            const largeString = 'x'.repeat(DEFAULT_CHUNK_SIZE + 100);
             const message = { data: largeString };
 
             await sendChunkedMessage(message, { sendMessageFn });
 
-            // Serialized JSON is larger than MAX_CHUNK_SIZE, so at least 2 chunks + 1 done
+            // Serialized JSON is larger than DEFAULT_CHUNK_SIZE, so at least 2 chunks + 1 done
             expect(sendMessageFn.mock.calls.length).toBeGreaterThanOrEqual(3);
 
             // All calls except last should have chunk property
@@ -94,11 +101,13 @@ describe('ext-send-chunked-message', () => {
 
         test('chunks reconstruct to the original serialized message', async () => {
             const sendMessageFn = jest.fn().mockResolvedValue(undefined);
-            const largeString = 'abcdefghij'.repeat(MAX_CHUNK_SIZE / 5);
-            const message = { data: largeString };
+            const message = { data: 'abcdefghij'.repeat(1000) };
             const serialized = JSON.stringify(message);
 
-            await sendChunkedMessage(message, { sendMessageFn });
+            await sendChunkedMessage(message, {
+                sendMessageFn,
+                maxChunkSize: 512
+            });
 
             // Collect all chunks (all calls except the last "done" call)
             const chunks = [];
@@ -219,6 +228,74 @@ describe('ext-send-chunked-message', () => {
             await sendChunkedMessage({ test: true });
 
             expect(mockSendMessage).toHaveBeenCalled();
+        });
+
+        test('default sendMessageFn rejects when chrome.runtime.lastError is set', async () => {
+            mockSendMessage.mockImplementation((msg, cb) => {
+                global.chrome.runtime.lastError = {
+                    message: 'Could not establish connection'
+                };
+                cb(undefined);
+                delete global.chrome.runtime.lastError;
+            });
+
+            await expect(sendChunkedMessage({ test: true })).rejects.toThrow(
+                'Could not establish connection'
+            );
+        });
+
+        test('throws when receiver responds with a reassembly error', async () => {
+            const sendMessageFn = jest
+                .fn()
+                .mockResolvedValueOnce(undefined) // chunk
+                .mockResolvedValueOnce({
+                    // done - receiver could not reassemble the message
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-err',
+                    error: 'No chunks stored for requestId: req-err'
+                });
+
+            await expect(
+                sendChunkedMessage({ data: 'test' }, { sendMessageFn })
+            ).rejects.toThrow('No chunks stored for requestId: req-err');
+        });
+
+        test('reconstructs content that requires JSON escaping', async () => {
+            const sendMessageFn = jest.fn().mockResolvedValue(undefined);
+            // Quotes and backslashes get escaped inside chunks; slicing may cut
+            // through the middle of an escape sequence
+            const message = '"\\'.repeat(100);
+
+            await sendChunkedMessage(message, {
+                sendMessageFn,
+                maxChunkSize: 40
+            });
+
+            const chunkCalls = sendMessageFn.mock.calls.slice(0, -1);
+            chunkCalls.forEach(call => {
+                expect(call[0].chunk.length).toBeLessThanOrEqual(40);
+            });
+            expect(chunkCalls.map(c => c[0].chunk).join('')).toBe(
+                JSON.stringify(message)
+            );
+        });
+
+        test('reconstructs multi-byte character content', async () => {
+            const sendMessageFn = jest.fn().mockResolvedValue(undefined);
+            const message = 'я'.repeat(100);
+
+            await sendChunkedMessage(message, {
+                sendMessageFn,
+                maxChunkSize: 64
+            });
+
+            const chunkCalls = sendMessageFn.mock.calls.slice(0, -1);
+            chunkCalls.forEach(call => {
+                expect(call[0].chunk.length).toBeLessThanOrEqual(64);
+            });
+            expect(chunkCalls.map(c => c[0].chunk).join('')).toBe(
+                JSON.stringify(message)
+            );
         });
 
         test('handles chunked response from receiver', async () => {
@@ -420,6 +497,23 @@ describe('ext-send-chunked-message', () => {
             expect(sendResponse).toHaveBeenCalledWith({
                 [CHUNKED_MESSAGE_FLAG]: true,
                 requestId: 'custom-uuid'
+            });
+        });
+
+        test('marks all response messages with isResponse flag', async () => {
+            const sendMessageFn = jest.fn().mockResolvedValue(undefined);
+            const sendResponse = jest.fn();
+
+            sendChunkedResponse({ sendMessageFn })(
+                { data: 'test' },
+                sendResponse
+            );
+
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            expect(sendMessageFn).toHaveBeenCalled();
+            sendMessageFn.mock.calls.forEach(call => {
+                expect(call[0].isResponse).toBe(true);
             });
         });
 
@@ -750,19 +844,27 @@ describe('ext-send-chunked-message', () => {
                 sendResponse
             );
 
-            // Sending done again with same requestId should throw
+            // Sending done again with same requestId responds with an error
             // because requestsStorage['req-cleanup'] was deleted
-            expect(() => {
-                internalListener(
-                    {
-                        [CHUNKED_MESSAGE_FLAG]: true,
-                        requestId: 'req-cleanup',
-                        done: true
-                    },
-                    sender,
-                    jest.fn()
-                );
-            }).toThrow();
+            const errorResponse = jest.fn();
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-cleanup',
+                    done: true
+                },
+                sender,
+                errorResponse
+            );
+
+            expect(handler).toHaveBeenCalledTimes(1);
+            expect(errorResponse).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'req-cleanup',
+                    error: expect.stringContaining('No chunks stored')
+                })
+            );
         });
 
         test('forwards handler return value', () => {
@@ -834,6 +936,126 @@ describe('ext-send-chunked-message', () => {
             );
         });
 
+        test('general listener ignores response traffic', () => {
+            const chunkResult = internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'resp-req',
+                    chunk: JSON.stringify({ resp: true }),
+                    isResponse: true
+                },
+                {},
+                sendResponse
+            );
+            expect(chunkResult).toBe(false);
+            expect(sendResponse).not.toHaveBeenCalled();
+
+            const doneResult = internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'resp-req',
+                    done: true,
+                    isResponse: true
+                },
+                {},
+                sendResponse
+            );
+            expect(doneResult).toBe(false);
+            expect(handler).not.toHaveBeenCalled();
+        });
+
+        test('listener with requestIdToMonitor processes response traffic for its requestId', () => {
+            const filteredHandler = jest.fn();
+            addOnChunkedMessageListener(filteredHandler, {
+                requestIdToMonitor: 'resp-target'
+            });
+            const filteredListener =
+                mockAddListener.mock.calls[
+                    mockAddListener.mock.calls.length - 1
+                ][0];
+
+            filteredListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'resp-target',
+                    chunk: JSON.stringify({ resp: true }),
+                    isResponse: true
+                },
+                {},
+                jest.fn()
+            );
+            filteredListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'resp-target',
+                    done: true,
+                    isResponse: true
+                },
+                {},
+                sendResponse
+            );
+
+            expect(filteredHandler).toHaveBeenCalledWith(
+                { resp: true },
+                {},
+                sendResponse
+            );
+        });
+
+        test('responds with error when done arrives with no stored chunks', () => {
+            const result = internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'unknown-req',
+                    done: true
+                },
+                {},
+                sendResponse
+            );
+
+            expect(result).toBe(false);
+            expect(handler).not.toHaveBeenCalled();
+            expect(sendResponse).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'unknown-req',
+                    error: expect.stringContaining('No chunks stored')
+                })
+            );
+        });
+
+        test('responds with error when chunks do not form valid JSON', () => {
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'corrupt-req',
+                    chunk: '{"partial":'
+                },
+                {},
+                jest.fn()
+            );
+
+            const result = internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'corrupt-req',
+                    done: true
+                },
+                {},
+                sendResponse
+            );
+
+            expect(result).toBe(false);
+            expect(handler).not.toHaveBeenCalled();
+            expect(sendResponse).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'corrupt-req',
+                    error: expect.stringContaining('Failed to reassemble')
+                })
+            );
+        });
+
         test('cleans up stale requests when new request starts', () => {
             jest.useFakeTimers();
 
@@ -862,18 +1084,22 @@ describe('ext-send-chunked-message', () => {
                 jest.fn()
             );
 
-            // Complete the stale request — should throw because it was cleaned up
-            expect(() => {
-                internalListener(
-                    {
-                        [CHUNKED_MESSAGE_FLAG]: true,
-                        requestId: 'stale-req',
-                        done: true
-                    },
-                    {},
-                    jest.fn()
-                );
-            }).toThrow();
+            // Complete the stale request — responds with an error because it was cleaned up
+            const errorResponse = jest.fn();
+            internalListener(
+                {
+                    [CHUNKED_MESSAGE_FLAG]: true,
+                    requestId: 'stale-req',
+                    done: true
+                },
+                {},
+                errorResponse
+            );
+            expect(errorResponse).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    error: expect.stringContaining('No chunks stored')
+                })
+            );
 
             // Complete the fresh request — should work fine
             internalListener(

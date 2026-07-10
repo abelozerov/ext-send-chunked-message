@@ -2,7 +2,7 @@
 
 A library enabling the transmission of large messages via chrome.runtime in Chrome Extensions with Manifest V3.
 
-Standard `chrome.runtime.sendMessage` has a message size limit ~32Mb. When you exceed the limit you will receive an error "Uncaught Error: Message length exceeded maximum allowed length". This library resolves the problem and allows you to send messages without a limit.
+Standard `chrome.runtime.sendMessage` has a message size limit of 64 MiB, applied to the UTF-8 byte length of the JSON-serialized message. When you exceed the limit you will receive an error "Message exceeded maximum allowed size of 64MiB." (older Chrome versions: "Message length exceeded maximum allowed length"). This library resolves the problem and allows you to send messages without a limit.
 
 ## Installation
 
@@ -98,7 +98,17 @@ sendChunkedResponse({
 
 ## Custom chunk size
 
-By default, messages are split into 32 MB chunks. You can change this via the `maxChunkSize` option (in bytes):
+By default, messages are split into ~21 MB chunks — a third of Chrome's 64 MiB limit. The limit applies to the UTF-8 byte length of the message as it is re-serialized on send, and a chunk can inflate at most 3x in that process (2x from JSON escaping of `"` and `\`, 3x from UTF-8 encoding of non-ASCII characters), so a third of the limit is always safe to send without measuring the actual content.
+
+You can change the chunk size via the `maxChunkSize` option (measured in characters of the serialized message). In particular, if you know your payload is ASCII without quotes and backslashes — e.g. base64-encoded files or images — chunks close to the full limit are safe:
+
+```js
+sendChunkedMessage(base64FileContent, {
+    maxChunkSize: 60 * 1024 * 1024 // safe for base64 payloads
+});
+```
+
+Or lower it to keep individual messages small:
 
 ```js
 import { sendChunkedMessage } from 'ext-send-chunked-message';
