@@ -9,6 +9,10 @@ jobs:
     ci:
         uses: ./.github/workflows/ci.yml
 
+    # Stages the package instead of publishing directly: staging does not
+    # require 2FA, so it works with a granular token without the deprecated
+    # bypass2fa flag. The staged version must then be approved (with 2FA)
+    # on npmjs.com under Staged Packages, or via `npm stage approve`
     publish:
         needs: ci
         runs-on: ubuntu-latest
@@ -18,7 +22,9 @@ jobs:
               with:
                   node-version: 22
                   registry-url: 'https://registry.npmjs.org'
+            # Node 22 bundles npm 10; staged publishing needs npm >= 11.15
+            - run: npm install -g npm@latest
             - run: npm install
-            - run: npm publish
+            - run: npm stage publish
               env:
                   NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}

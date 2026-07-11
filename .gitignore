@@ -4,3 +4,4 @@ dist/
 package-lock.json
 test/e2e/build/
 test-results/
+*.tgz
