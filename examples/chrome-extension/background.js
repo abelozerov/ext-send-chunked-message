@@ -15,7 +15,9 @@ chrome.action.onClicked.addListener(tab => {
 addOnChunkedMessageListener((message, sender, sendResponse) => {
     console.log('large message received. Length: ', message.length);
 
-    const largeResponse = 'y'.repeat(DEFAULT_CHUNK_SIZE * 3);
+    // Six default chunks (~134 MB) — twice Chrome's 64 MiB message limit, so a
+    // plain sendResponse would fail here.
+    const largeResponse = 'y'.repeat(DEFAULT_CHUNK_SIZE * 6);
 
     console.log('sending large response. Length: ', largeResponse.length);
     sendChunkedResponse({

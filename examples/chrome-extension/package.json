@@ -11,9 +11,9 @@
     "author": "",
     "license": "ISC",
     "devDependencies": {
-        "esbuild": "0.21.4"
+        "esbuild": "^0.27.3"
     },
     "dependencies": {
-        "ext-send-chunked-message": "^2.0.1"
+        "ext-send-chunked-message": "^2.1.0"
     }
 }
