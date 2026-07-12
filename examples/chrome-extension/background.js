@@ -1,11 +1,8 @@
 import {
     addOnChunkedMessageListener,
-    sendChunkedResponse
+    sendChunkedResponse,
+    DEFAULT_CHUNK_SIZE
 } from 'ext-send-chunked-message';
-
-// The default chunk size is a third of Chrome's 64 MiB limit; this example
-// lowers it to keep the demo payloads small.
-const CHUNK_SIZE = 1024 * 1024;
 
 chrome.action.onClicked.addListener(tab => {
     const tabId = tab.id;
@@ -18,13 +15,14 @@ chrome.action.onClicked.addListener(tab => {
 addOnChunkedMessageListener((message, sender, sendResponse) => {
     console.log('large message received. Length: ', message.length);
 
-    const largeResponse = 'y'.repeat(CHUNK_SIZE * 3);
+    // Six default chunks (~134 MB) — twice Chrome's 64 MiB message limit, so a
+    // plain sendResponse would fail here.
+    const largeResponse = 'y'.repeat(DEFAULT_CHUNK_SIZE * 6);
 
     console.log('sending large response. Length: ', largeResponse.length);
     sendChunkedResponse({
         sendMessageFn: message =>
-            chrome.tabs.sendMessage(sender.tab.id, message),
-        maxChunkSize: CHUNK_SIZE
+            chrome.tabs.sendMessage(sender.tab.id, message)
     })(largeResponse, sendResponse);
 
     return true; // async listener

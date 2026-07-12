@@ -1,13 +1,14 @@
-import { sendChunkedMessage } from 'ext-send-chunked-message';
+import {
+    sendChunkedMessage,
+    DEFAULT_CHUNK_SIZE
+} from 'ext-send-chunked-message';
 
-// The default chunk size is a third of Chrome's 64 MiB limit; this example
-// lowers it to keep the demo payloads small.
-const CHUNK_SIZE = 1024 * 1024;
-
-const largeMessage = 'x'.repeat(CHUNK_SIZE * 4);
+// Six default chunks (~134 MB) — twice Chrome's 64 MiB message limit, so a
+// plain chrome.runtime.sendMessage would fail here.
+const largeMessage = 'x'.repeat(DEFAULT_CHUNK_SIZE * 6);
 
 console.log('sending large message. Length: ', largeMessage.length);
-sendChunkedMessage(largeMessage, { maxChunkSize: CHUNK_SIZE })
+sendChunkedMessage(largeMessage)
     .then(response => {
         console.log('large response received. Length: ', response.length);
     })
