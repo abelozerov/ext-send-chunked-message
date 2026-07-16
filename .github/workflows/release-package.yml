@@ -16,15 +16,20 @@ jobs:
     publish:
         needs: ci
         runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            id-token: write # npm --provenance
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
               with:
                   node-version: 22
                   registry-url: 'https://registry.npmjs.org'
-            # Node 22 bundles npm 10; staged publishing needs npm >= 11.15
-            - run: npm install -g npm@latest
+            # Node 22 bundles npm 10; staged publishing needs npm >= 11.15.
+            # Pinned to the major so a future npm release can't break the
+            # pipeline mid-release.
+            - run: npm install -g npm@11
             - run: npm install
-            - run: npm stage publish
+            - run: npm stage publish --provenance
               env:
                   NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
